@@ -1,0 +1,30 @@
+name: Compatibility issue
+description: Broker or Go version interoperability problem
+title: "[compat]: "
+labels: ["compat"]
+body:
+  - type: input
+    id: gokafka
+    attributes:
+      label: GoKafka version
+    validations:
+      required: true
+  - type: input
+    id: kafka_image
+    attributes:
+      label: Kafka Docker image or distribution
+      placeholder: apache/kafka:4.3.0
+    validations:
+      required: true
+  - type: input
+    id: go_version
+    attributes:
+      label: Go version
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Error logs / negotiated API versions
+    validations:
+      required: true

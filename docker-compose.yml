@@ -1,0 +1,110 @@
+# GoKafka integration stack — multiple listeners + Schema Registry.
+#
+# Listeners (from host):
+#   9092  PLAINTEXT
+#   9093  SSL (TLS encryption)
+#   9094  SASL_PLAINTEXT (PLAIN + SCRAM)
+#   9095  SASL_SSL (PLAIN + SCRAM over TLS)
+#   8081  Apicurio Schema Registry (Confluent-compatible API)
+#
+# Test credentials (local only):
+#   PLAIN / SCRAM user: gokafka / gokafka-secret
+#   PLAIN user: alice / alice-secret
+#   Inter-broker: admin / admin-secret
+
+services:
+  kafka:
+    image: ${KAFKA_IMAGE:-apache/kafka:3.9.2}
+    hostname: kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+      - "9094:9094"
+      - "9095:9095"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_LISTENERS: >-
+        INTERNAL://:29092,
+        CONTROLLER://:29093,
+        PLAINTEXT://:9092,
+        SSL://:9093,
+        SASL_PLAINTEXT://:9094,
+        SASL_SSL://:9095
+      KAFKA_ADVERTISED_LISTENERS: >-
+        INTERNAL://kafka:29092,
+        PLAINTEXT://localhost:9092,
+        SSL://localhost:9093,
+        SASL_PLAINTEXT://localhost:9094,
+        SASL_SSL://localhost:9095
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >-
+        INTERNAL:PLAINTEXT,
+        CONTROLLER:PLAINTEXT,
+        PLAINTEXT:PLAINTEXT,
+        SSL:SSL,
+        SASL_PLAINTEXT:SASL_PLAINTEXT,
+        SASL_SSL:SASL_SSL
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_AUTHORIZER_CLASS_NAME: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+      KAFKA_SUPER_USERS: User:admin;User:ANONYMOUS
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "true"
+      KAFKA_TRANSACTIONAL_ID_AUTHORIZATION_ENABLE: "false"
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN,SCRAM-SHA-256,SCRAM-SHA-512
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_OPTS: >-
+        -Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf
+      KAFKA_SSL_KEYSTORE_FILENAME: kafka.keystore.jks
+      KAFKA_SSL_KEYSTORE_CREDENTIALS: kafka_keystore_creds
+      KAFKA_SSL_KEY_CREDENTIALS: kafka_ssl_key_creds
+      KAFKA_SSL_TRUSTSTORE_FILENAME: kafka.truststore.jks
+      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: kafka_truststore_creds
+      KAFKA_SSL_CLIENT_AUTH: none
+      KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: ""
+    volumes:
+      - ./docker/secrets:/etc/kafka/secrets:ro
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  kafka-init:
+    image: ${KAFKA_IMAGE:-apache/kafka:3.9.2}
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      SCRAM_USER: gokafka
+      SCRAM_PASSWORD: gokafka-secret
+    volumes:
+      - ./docker/init/init-scram-users.sh:/init-scram-users.sh:ro
+    entrypoint: ["/bin/bash", "/init-scram-users.sh"]
+    restart: "no"
+
+  schema-registry:
+    # Lightweight Confluent-compatible API (much smaller than cp-schema-registry).
+    image: apicurio/apicurio-registry-mem:2.5.11.Final
+    hostname: schema-registry
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    environment:
+      REGISTRY_API_COMPATIBILITY: confluent
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/apis/ccompat/v6/subjects >/dev/null || wget -qO- http://localhost:8080/apis/ccompat/v6/subjects >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s

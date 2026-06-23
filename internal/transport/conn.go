@@ -1,0 +1,116 @@
+package transport
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"io"
+	"net"
+	"sync/atomic"
+	"time"
+
+	"github.com/sinamohsenifar/gokafka/internal/auth"
+	"github.com/sinamohsenifar/gokafka/internal/protocol"
+)
+
+// Conn is a Kafka broker connection with optional SASL/TLS.
+type Conn struct {
+	addr            string
+	netConn         net.Conn
+	reader          *bufio.Reader
+	clientID        string
+	correlationID   int32
+	security        auth.Config
+	requestTimeout  time.Duration
+}
+
+func Dial(ctx context.Context, addr, clientID string, sec auth.Config, dialTimeout, requestTimeout time.Duration) (*Conn, error) {
+	if dialTimeout <= 0 {
+		dialTimeout = 10 * time.Second
+	}
+	if requestTimeout <= 0 {
+		requestTimeout = 30 * time.Second
+	}
+	d := net.Dialer{Timeout: dialTimeout}
+	nc, err := auth.Dial(ctx, d, addr, sec)
+	if err != nil {
+		return nil, err
+	}
+	c := &Conn{
+		addr:           addr,
+		netConn:        nc,
+		reader:         bufio.NewReader(nc),
+		clientID:       clientID,
+		security:       sec,
+		requestTimeout: requestTimeout,
+	}
+	if sec.SASLEnabled() {
+		if err := auth.Handshake(ctx, c, sec); err != nil {
+			nc.Close()
+			return nil, err
+		}
+	}
+	return c, nil
+}
+
+func (c *Conn) Close() error {
+	if c.netConn == nil {
+		return nil
+	}
+	return c.netConn.Close()
+}
+
+func (c *Conn) Addr() string { return c.addr }
+
+func (c *Conn) Write(b []byte) (int, error) {
+	return c.netConn.Write(b)
+}
+
+func (c *Conn) Read(b []byte) (int, error) {
+	return c.reader.Read(b)
+}
+
+func (c *Conn) nextCorrelationID() int32 {
+	return atomic.AddInt32(&c.correlationID, 1)
+}
+
+// Request sends a Kafka request and returns the full response frame.
+func (c *Conn) Request(ctx context.Context, apiKey, apiVersion int16, body []byte) ([]byte, error) {
+	corr := c.nextCorrelationID()
+	frame := protocol.EncodeRequest(protocol.RequestHeader{
+		APIKey: apiKey, APIVersion: apiVersion, CorrelationID: corr, ClientID: c.clientID,
+	}, body)
+
+	deadline, ok := ctx.Deadline()
+	if ok {
+		_ = c.netConn.SetDeadline(deadline)
+	} else {
+		_ = c.netConn.SetDeadline(time.Now().Add(c.requestTimeout))
+	}
+	defer c.netConn.SetDeadline(time.Time{})
+
+	if _, err := c.netConn.Write(frame); err != nil {
+		return nil, fmt.Errorf("transport: write: %w", err)
+	}
+
+	sizeBuf := make([]byte, 4)
+	if _, err := io.ReadFull(c.reader, sizeBuf); err != nil {
+		return nil, fmt.Errorf("transport: read size: %w", err)
+	}
+	size := int(sizeBuf[0])<<24 | int(sizeBuf[1])<<16 | int(sizeBuf[2])<<8 | int(sizeBuf[3])
+	resp := make([]byte, 4+size)
+	copy(resp, sizeBuf)
+	if _, err := io.ReadFull(c.reader, resp[4:]); err != nil {
+		return nil, fmt.Errorf("transport: read body: %w", err)
+	}
+	return resp, nil
+}
+
+func ResponseBody(raw []byte) ([]byte, error) {
+	return protocol.ResponseBody(raw)
+}
+
+// ResponseBodyForAPI strips the Kafka response header for a specific API version.
+func ResponseBodyForAPI(raw []byte, apiKey, apiVersion int16) ([]byte, error) {
+	return protocol.ResponseBodyForAPI(raw, apiKey, apiVersion)
+}

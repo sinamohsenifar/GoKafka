@@ -1,0 +1,88 @@
+name: Integration
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+
+      - name: Generate test TLS material
+        run: bash scripts/gen-test-certs.sh
+
+      - name: Start Kafka stack
+        run: |
+          set -euxo pipefail
+          docker compose pull
+          docker compose up -d kafka
+          for i in $(seq 1 60); do
+            if docker compose exec -T kafka /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1; then
+              echo "kafka broker ready"
+              break
+            fi
+            sleep 2
+            if [ "$i" -eq 60 ]; then
+              docker compose logs kafka
+              exit 1
+            fi
+          done
+          docker compose up -d schema-registry
+          docker compose run --rm kafka-init
+
+      - name: Wait for Kafka and Schema Registry
+        run: |
+          for port in 9092 9093 9094 9095; do
+            for i in $(seq 1 45); do
+              if bash -c "echo > /dev/tcp/localhost/${port}" 2>/dev/null; then
+                echo "listener :${port} ready"
+                break
+              fi
+              sleep 2
+              if [ "$i" -eq 45 ]; then
+                echo "listener :${port} not ready"
+                docker compose logs
+                exit 1
+              fi
+            done
+          done
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8081/apis/ccompat/v6/subjects >/dev/null; then
+              echo "schema registry ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "schema registry not ready"
+          docker compose logs schema-registry
+          exit 1
+
+      - name: Wait for SCRAM user bootstrap
+        run: docker compose logs kafka-init || true
+
+      - name: Integration tests
+        env:
+          KAFKA_BROKERS: localhost:9092
+          KAFKA_BROKERS_PLAINTEXT: localhost:9092
+          KAFKA_BROKERS_SSL: localhost:9093
+          KAFKA_BROKERS_SASL_PLAINTEXT: localhost:9094
+          KAFKA_BROKERS_SASL_SSL: localhost:9095
+          SCHEMA_REGISTRY_URL: http://localhost:8081/apis/ccompat/v6
+          GOKAFKA_SECRETS_DIR: ${{ github.workspace }}/docker/secrets
+        run: go test -tags=integration -race -count=1 -timeout=5m ./...
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v

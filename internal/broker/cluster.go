@@ -1,0 +1,391 @@
+package broker
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"time"
+
+	"github.com/sinamohsenifar/gokafka/internal/auth"
+	"github.com/sinamohsenifar/gokafka/internal/protocol"
+	"github.com/sinamohsenifar/gokafka/internal/transport"
+	"github.com/sinamohsenifar/gokafka/observe"
+)
+
+// Options configures cluster networking behavior.
+type Options struct {
+	DialTimeout    time.Duration
+	RequestTimeout time.Duration
+	HostRemap      map[string]string
+	AddressMapper  func(nodeID int32, host string, port int32) string
+	Observe        *observe.Hub
+}
+
+func (o Options) resolveAddress(nodeID int32, host string, port int32) string {
+	if o.AddressMapper != nil {
+		if addr := o.AddressMapper(nodeID, host, port); addr != "" {
+			return addr
+		}
+	}
+	key := fmt.Sprintf("%s:%d", host, port)
+	if o.HostRemap != nil {
+		if mapped, ok := o.HostRemap[key]; ok {
+			return mapped
+		}
+	}
+	return key
+}
+
+// Cluster maintains metadata and broker connections.
+type Cluster struct {
+	Seeds    []string
+	ClientID string
+	Security auth.Config
+	Opts     Options
+
+	mu          sync.RWMutex
+	meta        protocol.MetadataResponse
+	leaderIndex map[string]map[int32]int32 // topic -> partition -> broker node id
+	conns       map[int32]*transport.Conn
+	seedConn    *transport.Conn
+	apiVersions map[int16]int16
+}
+
+func New(seeds []string, clientID string, sec auth.Config, opts Options) *Cluster {
+	if opts.DialTimeout <= 0 {
+		opts.DialTimeout = 10 * time.Second
+	}
+	if opts.RequestTimeout <= 0 {
+		opts.RequestTimeout = 30 * time.Second
+	}
+	return &Cluster{
+		Seeds:    seeds,
+		ClientID: clientID,
+		Security: sec,
+		Opts:     opts,
+		conns:    map[int32]*transport.Conn{},
+	}
+}
+
+func (c *Cluster) Close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, conn := range c.conns {
+		_ = conn.Close()
+	}
+	if c.seedConn != nil {
+		_ = c.seedConn.Close()
+	}
+	c.conns = map[int32]*transport.Conn{}
+}
+
+func (c *Cluster) Invalidate(nodeID int32) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if conn, ok := c.conns[nodeID]; ok {
+		_ = conn.Close()
+		delete(c.conns, nodeID)
+	}
+}
+
+func (c *Cluster) Refresh(ctx context.Context, topics []string) error {
+	conn, err := c.seed(ctx)
+	if err != nil {
+		return err
+	}
+	ver := c.negotiatedVersion(protocol.APIMetadata, protocol.VerMetadata)
+	resp, err := conn.Request(ctx, protocol.APIMetadata, ver, protocol.EncodeMetadataRequest(ver, topics))
+	if err != nil {
+		return err
+	}
+	body, err := transport.ResponseBody(resp)
+	if err != nil {
+		return err
+	}
+	meta, err := protocol.DecodeMetadataResponse(ver, body)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.meta = meta
+	c.leaderIndex = buildLeaderIndex(meta)
+	c.mu.Unlock()
+	return nil
+}
+
+func buildLeaderIndex(meta protocol.MetadataResponse) map[string]map[int32]int32 {
+	out := make(map[string]map[int32]int32, len(meta.Topics))
+	for _, t := range meta.Topics {
+		parts := make(map[int32]int32, len(t.Partitions))
+		for _, p := range t.Partitions {
+			parts[p.Partition] = p.Leader
+		}
+		out[t.Name] = parts
+	}
+	return out
+}
+
+// LeaderNodeID returns the broker node id leading a topic partition.
+func (c *Cluster) LeaderNodeID(topic string, partition int32) (int32, bool) {
+	return c.partitionLeader(topic, partition)
+}
+
+func (c *Cluster) partitionLeader(topic string, part int32) (int32, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	parts, ok := c.leaderIndex[topic]
+	if !ok {
+		return 0, false
+	}
+	leader, ok := parts[part]
+	return leader, ok
+}
+
+func (c *Cluster) Metadata() protocol.MetadataResponse {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.meta
+}
+
+func (c *Cluster) LeaderBroker(topic string, partition int32) (protocol.Broker, error) {
+	c.mu.RLock()
+	leader, ok := c.leaderIndex[topic][partition]
+	brokers := c.meta.Brokers
+	c.mu.RUnlock()
+	if !ok {
+		return protocol.Broker{}, fmt.Errorf("broker: leader not found for %s-%d", topic, partition)
+	}
+	for _, b := range brokers {
+		if b.NodeID == leader {
+			return b, nil
+		}
+	}
+	return protocol.Broker{}, fmt.Errorf("broker: leader not found for %s-%d", topic, partition)
+}
+
+func (c *Cluster) Conn(ctx context.Context, nodeID int32) (*transport.Conn, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if conn, ok := c.conns[nodeID]; ok {
+		return conn, nil
+	}
+	var broker protocol.Broker
+	for _, b := range c.meta.Brokers {
+		if b.NodeID == nodeID {
+			broker = b
+			break
+		}
+	}
+	if broker.Host == "" {
+		return nil, fmt.Errorf("broker: unknown node %d", nodeID)
+	}
+	addr := c.Opts.resolveAddress(broker.NodeID, broker.Host, broker.Port)
+	conn, err := transport.Dial(ctx, addr, c.ClientID, c.Security, c.Opts.DialTimeout, c.Opts.RequestTimeout)
+	if err != nil {
+		return nil, err
+	}
+	c.conns[nodeID] = conn
+	return conn, nil
+}
+
+func (c *Cluster) Request(ctx context.Context, nodeID int32, apiKey, apiVersion int16, body []byte) ([]byte, error) {
+	if v := c.negotiatedVersion(apiKey, apiVersion); v > 0 && apiVersion > v {
+		apiVersion = v
+	}
+	start := time.Now()
+	conn, err := c.Conn(ctx, nodeID)
+	if err != nil {
+		c.recordRequest(apiKey, time.Since(start), err)
+		return nil, err
+	}
+	resp, err := conn.Request(ctx, apiKey, apiVersion, body)
+	if err != nil {
+		c.Invalidate(nodeID)
+		c.recordRequest(apiKey, time.Since(start), err)
+		return nil, err
+	}
+	c.recordRequest(apiKey, time.Since(start), nil)
+	return transport.ResponseBodyForAPI(resp, apiKey, apiVersion)
+}
+
+func (c *Cluster) seed(ctx context.Context) (*transport.Conn, error) {
+	c.mu.RLock()
+	if c.seedConn != nil {
+		c.mu.RUnlock()
+		return c.seedConn, nil
+	}
+	c.mu.RUnlock()
+	var lastErr error
+	for _, s := range c.Seeds {
+		conn, err := transport.Dial(ctx, s, c.ClientID, c.Security, c.Opts.DialTimeout, c.Opts.RequestTimeout)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		c.mu.Lock()
+		c.seedConn = conn
+		c.mu.Unlock()
+		return conn, nil
+	}
+	return nil, fmt.Errorf("broker: dial seeds: %w", lastErr)
+}
+
+func (c *Cluster) recordRequest(apiKey int16, d time.Duration, err error) {
+	if c.Opts.Observe != nil && c.Opts.Observe.Metrics != nil {
+		c.Opts.Observe.Metrics.OnRequest(apiKey, d, err)
+	}
+}
+
+// FindCoordinator resolves the broker node id for a group or transactional id.
+func (c *Cluster) FindCoordinator(ctx context.Context, key string, keyType int8) (int32, error) {
+	body := protocol.EncodeFindCoordinatorRequest(key, keyType)
+	resp, err := c.RequestViaSeed(ctx, protocol.APIFindCoordinator, protocol.VerFindCoordinator, body)
+	if err != nil {
+		return 0, err
+	}
+	coord, err := protocol.DecodeFindCoordinatorResponse(resp)
+	if err != nil {
+		return 0, err
+	}
+	if coord.ErrorCode != 0 {
+		return 0, fmt.Errorf("broker: find coordinator: error %d", coord.ErrorCode)
+	}
+	return coord.NodeID, nil
+}
+
+// TransactionCoordinator resolves the transaction coordinator for a transactional id.
+func (c *Cluster) TransactionCoordinator(ctx context.Context, txnID string) (int32, error) {
+	return c.FindCoordinator(ctx, txnID, protocol.CoordinatorTransaction)
+}
+
+// NegotiateVersions queries broker API ranges and stores negotiated versions for subsequent requests.
+func (c *Cluster) NegotiateVersions(ctx context.Context, softwareVersion string) error {
+	body := protocol.EncodeApiVersionsRequest(c.ClientID, softwareVersion)
+	resp, err := c.RequestViaSeed(ctx, protocol.APIApiVersions, protocol.VerApiVersions, body)
+	if err != nil {
+		return err
+	}
+	versions, code, err := protocol.DecodeApiVersionsResponse(protocol.VerApiVersions, resp)
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		return fmt.Errorf("broker: api versions: error %d", code)
+	}
+	negotiated := map[int16]int16{}
+	for _, v := range versions {
+		clientMax := protocol.ClientVersion(v.APIKey)
+		if clientMax == 0 {
+			continue
+		}
+		if ver := protocol.NegotiateVersion(versions, v.APIKey, clientMax); ver > 0 {
+			negotiated[v.APIKey] = ver
+		}
+	}
+	c.apiVerMuLock(negotiated)
+	return nil
+}
+
+func (c *Cluster) apiVerMuLock(negotiated map[int16]int16) {
+	c.mu.Lock()
+	c.apiVersions = negotiated
+	c.mu.Unlock()
+}
+
+func (c *Cluster) negotiatedVersion(apiKey, fallback int16) int16 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.apiVersions == nil {
+		return fallback
+	}
+	if v, ok := c.apiVersions[apiKey]; ok {
+		return v
+	}
+	return fallback
+}
+
+// NegotiatedVersion returns the negotiated API version for a key, or fallback if not negotiated.
+func (c *Cluster) NegotiatedVersion(apiKey, fallback int16) int16 {
+	return c.negotiatedVersion(apiKey, fallback)
+}
+
+// NegotiatedVersions returns a copy of negotiated API versions keyed by API id.
+func (c *Cluster) NegotiatedVersions() map[int16]int16 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if len(c.apiVersions) == 0 {
+		return nil
+	}
+	out := make(map[int16]int16, len(c.apiVersions))
+	for k, v := range c.apiVersions {
+		out[k] = v
+	}
+	return out
+}
+
+// RequestViaSeed sends a request through a seed broker connection.
+func (c *Cluster) RequestViaSeed(ctx context.Context, apiKey, apiVersion int16, body []byte) ([]byte, error) {
+	return c.requestSeed(ctx, apiKey, apiVersion, body, false)
+}
+
+// RequestAny tries metadata brokers in order, then falls back to seed brokers.
+func (c *Cluster) RequestAny(ctx context.Context, apiKey, apiVersion int16, body []byte) ([]byte, error) {
+	c.mu.RLock()
+	brokers := append([]protocol.Broker(nil), c.meta.Brokers...)
+	c.mu.RUnlock()
+
+	var lastErr error
+	for _, b := range brokers {
+		resp, err := c.Request(ctx, b.NodeID, apiKey, apiVersion, body)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+	}
+	resp, err := c.requestSeed(ctx, apiKey, apiVersion, body, true)
+	if err == nil {
+		return resp, nil
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, err
+}
+
+func (c *Cluster) requestSeed(ctx context.Context, apiKey, apiVersion int16, body []byte, retry bool) ([]byte, error) {
+	if v := c.negotiatedVersion(apiKey, apiVersion); v > 0 && apiVersion > v {
+		apiVersion = v
+	}
+	start := time.Now()
+	conn, err := c.seed(ctx)
+	if err != nil {
+		c.recordRequest(apiKey, time.Since(start), err)
+		return nil, err
+	}
+	resp, err := conn.Request(ctx, apiKey, apiVersion, body)
+	if err != nil {
+		c.invalidateSeed()
+		if retry {
+			if conn2, err2 := c.seed(ctx); err2 == nil {
+				resp, err = conn2.Request(ctx, apiKey, apiVersion, body)
+				if err != nil {
+					c.invalidateSeed()
+				}
+			}
+		}
+	}
+	c.recordRequest(apiKey, time.Since(start), err)
+	if err != nil {
+		return nil, err
+	}
+	return transport.ResponseBodyForAPI(resp, apiKey, apiVersion)
+}
+
+func (c *Cluster) invalidateSeed() {
+	c.mu.Lock()
+	if c.seedConn != nil {
+		_ = c.seedConn.Close()
+		c.seedConn = nil
+	}
+	c.mu.Unlock()
+}

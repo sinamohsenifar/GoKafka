@@ -1,0 +1,22 @@
+name: Feature request
+description: Suggest a new feature or KIP support
+title: "[feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: input
+    id: kip
+    attributes:
+      label: Related KIP (if any)
+      placeholder: e.g. KIP-345

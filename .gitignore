@@ -1,0 +1,30 @@
+# Binaries
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+
+# Go
+/vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Env / secrets
+.env
+.env.*
+*.jks
+
+# Local test TLS (committed under docker/secrets/)
+*.pem
+*.key
+!docker/secrets/**
+
+# Coverage
+coverage.out
+coverage.html

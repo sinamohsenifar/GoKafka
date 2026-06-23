@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ["1.22.x", "1.23.x", "1.24.x"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Verify no third-party modules
+        run: |
+          go mod tidy
+          test "$(grep -c '^require (' go.mod || true)" -eq 0
+          ! grep -E '^\t(require |github\.com|golang\.org/x)' go.mod || (echo "external deps forbidden" && cat go.mod && exit 1)
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race -count=1 ./...
+
+      - name: Build examples
+        run: go build ./...
+
+  release-check:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+      - name: Verify tag matches Version constant
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VER=$(grep 'const Version' version.go | sed 's/.*"\(.*\)".*/\1/')
+          echo "tag=$TAG version=$VER"
+          test "$TAG" = "$VER"
