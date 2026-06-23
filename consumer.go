@@ -169,6 +169,13 @@ func (c *Consumer) fetchFromBroker(
 	return out, nil
 }
 
+// GroupMetadata returns the consumer's group generation and member identity for transactional offset commit.
+func (c *Consumer) GroupMetadata() (generation int32, memberID, groupInstanceID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.generation, c.memberID, c.client.cfg.Consumer.GroupInstanceID
+}
+
 func (c *Consumer) bumpOffset(topic string, part int32, off int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

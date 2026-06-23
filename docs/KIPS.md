@@ -73,9 +73,11 @@ Compression is applied only when compressed size is smaller than uncompressed (b
 | Feature | Status | Tests |
 |---------|--------|-------|
 | InitProducerId | ✅ | Idempotent + transactional produce |
-| AddPartitionsToTxn (v1 wire) | ✅ | `TestIntegrationTransactionEOS` |
-| Produce within transaction | ✅ | `TestIntegrationTransactionEOS` |
-| read_committed consume | ✅ | Same |
+| AddPartitionsToTxn | ✅ | `TestIntegrationTransactionEOS` |
+| AddOffsetsToTxn + TxnOffsetCommit | ✅ | `TestIntegrationTransactionSendOffsets` |
+| Produce within transaction | ✅ | `TestIntegrationTransactionEOS`, CTP test |
+| Abort transaction | ✅ | `TestIntegrationTransactionAbort` |
+| read_committed consume | ✅ | Transaction integration suite |
 
 ## Share groups & future
 

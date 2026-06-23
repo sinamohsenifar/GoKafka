@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -69,7 +68,8 @@ func TestIntegrationTransactionSendOffsets(t *testing.T) {
 	defer cancel()
 
 	txnID := fmt.Sprintf("gokafka-ctp-%d", time.Now().UnixNano())
-	topic := fmt.Sprintf("gokafka-ctp-%d", time.Now().UnixNano())
+	inTopic := fmt.Sprintf("gokafka-ctp-in-%d", time.Now().UnixNano())
+	outTopic := fmt.Sprintf("gokafka-ctp-out-%d", time.Now().UnixNano())
 	group := fmt.Sprintf("gokafka-ctp-grp-%d", time.Now().UnixNano())
 
 	setup, err := gokafka.NewConfig(integrationBrokers(t))
@@ -80,12 +80,16 @@ func TestIntegrationTransactionSendOffsets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sclient.Admin().CreateTopic(ctx, topic, 1, 1); err != nil {
+	if err := sclient.Admin().CreateTopic(ctx, inTopic, 1, 1); err != nil {
 		t.Fatal(err)
 	}
-	integrationWaitTopicReady(t, sclient.Admin(), topic)
+	if err := sclient.Admin().CreateTopic(ctx, outTopic, 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	integrationWaitTopicReady(t, sclient.Admin(), inTopic)
+	integrationWaitTopicReady(t, sclient.Admin(), outTopic)
 	t.Cleanup(func() {
-		_ = sclient.Admin().DeleteTopics(context.Background(), topic)
+		_ = sclient.Admin().DeleteTopics(context.Background(), inTopic, outTopic)
 		sclient.Close()
 	})
 
@@ -101,10 +105,10 @@ func TestIntegrationTransactionSendOffsets(t *testing.T) {
 
 	first := []byte("first")
 	second := []byte("second")
-	if err := plainClient.Producer().ProduceSync(ctx, gokafka.Record{Topic: topic, Value: first}); err != nil {
+	if err := plainClient.Producer().ProduceSync(ctx, gokafka.Record{Topic: inTopic, Value: first}); err != nil {
 		t.Fatal(err)
 	}
-	if err := plainClient.Producer().ProduceSync(ctx, gokafka.Record{Topic: topic, Value: second}); err != nil {
+	if err := plainClient.Producer().ProduceSync(ctx, gokafka.Record{Topic: inTopic, Value: second}); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(200 * time.Millisecond)
@@ -120,9 +124,10 @@ func TestIntegrationTransactionSendOffsets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer cclient.Close()
 
-	consumer := cclient.Consumer([]string{topic})
-	var gotFirst bool
+	consumer := cclient.Consumer([]string{inTopic})
+	var consumedOffset int64 = -1
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		recs, err := consumer.Poll(ctx)
@@ -131,22 +136,18 @@ func TestIntegrationTransactionSendOffsets(t *testing.T) {
 		}
 		for _, r := range recs {
 			if string(r.Value) == string(first) {
-				gotFirst = true
+				consumedOffset = r.Offset
 				break
 			}
 		}
-		if gotFirst {
+		if consumedOffset >= 0 {
 			break
 		}
 	}
-	if !gotFirst {
+	if consumedOffset < 0 {
 		t.Fatal("first record not consumed")
 	}
-	if err := consumer.Leave(ctx); err != nil {
-		t.Fatal(err)
-	}
-	cclient.Close()
-	time.Sleep(500 * time.Millisecond)
+	gen, memberID, instID := consumer.GroupMetadata()
 
 	pcfg, err := gokafka.NewConfig(integrationBrokers(t),
 		gokafka.WithTransaction(gokafka.TransactionConfig{Enabled: true, TransactionalID: txnID}),
@@ -165,12 +166,15 @@ func TestIntegrationTransactionSendOffsets(t *testing.T) {
 		t.Fatal(err)
 	}
 	offsets := map[string]map[int32]int64{
-		topic: {0: 1},
+		inTopic: {0: consumedOffset + 1},
 	}
-	if err := txn.SendOffsetsToTxn(ctx, group, offsets); err != nil {
-		if strings.Contains(err.Error(), "EOF") {
-			t.Skip("SendOffsetsToTxn unavailable on this broker:", err)
-		}
+	if err := txn.SendOffsetsToTxn(ctx, group, offsets, gokafka.TxnOffsetCommitOptions{
+		Generation: gen, MemberID: memberID, GroupInstanceID: instID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	outputPayload := []byte("ctp-output")
+	if err := txn.ProduceWithinTxn(ctx, gokafka.Record{Topic: outTopic, Value: outputPayload}); err != nil {
 		t.Fatal(err)
 	}
 	if err := txn.Commit(ctx); err != nil {
@@ -181,6 +185,7 @@ func TestIntegrationTransactionSendOffsets(t *testing.T) {
 	verifyCfg, err := gokafka.NewConfig(integrationBrokers(t),
 		gokafka.WithConsumerGroup(group),
 		gokafka.WithConsumeFromBeginning(true),
+		gokafka.WithConsumer(gokafka.ConsumerConfig{IsolationLevel: gokafka.IsolationReadCommitted}),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -191,8 +196,10 @@ func TestIntegrationTransactionSendOffsets(t *testing.T) {
 	}
 	defer verifyClient.Close()
 
-	verify := verifyClient.Consumer([]string{topic})
-	deadline = time.Now().Add(20 * time.Second)
+	verify := verifyClient.Consumer([]string{inTopic, outTopic})
+	deadline = time.Now().Add(25 * time.Second)
+	seenSecond := false
+	seenOutput := false
 	for time.Now().Before(deadline) {
 		recs, err := verify.Poll(ctx)
 		if err != nil {
@@ -203,9 +210,18 @@ func TestIntegrationTransactionSendOffsets(t *testing.T) {
 				t.Fatal("group offset was not committed via SendOffsetsToTxn")
 			}
 			if string(r.Value) == string(second) {
-				return
+				seenSecond = true
+			}
+			if string(r.Value) == string(outputPayload) {
+				seenOutput = true
 			}
 		}
+		if seenSecond && seenOutput {
+			return
+		}
 	}
-	t.Fatal("second record not consumed after SendOffsetsToTxn commit")
+	if !seenSecond {
+		t.Fatal("second input record not consumed after SendOffsetsToTxn commit")
+	}
+	t.Fatal("transactional output not consumed")
 }

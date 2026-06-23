@@ -258,78 +258,80 @@ func decodeAddPartitionsToTxnFlex(body []byte) (int16, error) {
 	return 0, nil
 }
 
-// TxnGroupOffsets registers consumer group partitions with a transaction.
+// TxnGroupOffsets registers a consumer group with a transaction (legacy helper name).
 type TxnGroupOffsets struct {
 	GroupID string
 	Topics  []TxnTopicPartitions
 }
 
-func EncodeAddOffsetsToTxn(txnID string, producerID int64, epoch int16, groups []TxnGroupOffsets) []byte {
+// EncodeAddOffsetsToTxn registers a consumer group id with the open transaction.
+func EncodeAddOffsetsToTxn(ver int16, txnID string, producerID int64, epoch int16, groupID string) []byte {
+	if ver <= 0 {
+		ver = VerAddOffsetsToTxn
+	}
+	if ver >= 3 {
+		buf := wire.NewBuffer(64)
+		buf.WriteCompactString(txnID)
+		buf.WriteInt64(producerID)
+		buf.WriteInt16(epoch)
+		buf.WriteCompactString(groupID)
+		buf.WriteEmptyTagSection()
+		return buf.Bytes()
+	}
 	buf := wire.NewBuffer(64)
-	buf.WriteCompactString(txnID)
+	buf.WriteString(txnID)
 	buf.WriteInt64(producerID)
 	buf.WriteInt16(epoch)
-	buf.WriteCompactArrayLen(len(groups))
-	for _, g := range groups {
-		buf.WriteCompactString(g.GroupID)
-		buf.WriteCompactArrayLen(len(g.Topics))
-		for _, tp := range g.Topics {
-			buf.WriteCompactString(tp.Topic)
-			buf.WriteCompactArrayLen(len(tp.Partitions))
-			for _, p := range tp.Partitions {
-				buf.WriteInt32(p)
-			}
-			buf.WriteEmptyTagSection()
-		}
-		buf.WriteEmptyTagSection()
-	}
-	buf.WriteEmptyTagSection()
+	buf.WriteString(groupID)
 	return buf.Bytes()
 }
 
-func DecodeAddOffsetsToTxn(body []byte) (int16, error) {
+func DecodeAddOffsetsToTxn(ver int16, body []byte) (int16, error) {
+	if ver <= 0 {
+		ver = VerAddOffsetsToTxn
+	}
+	if ver >= 3 {
+		return decodeAddOffsetsToTxnFlex(body)
+	}
+	code, err := decodeAddOffsetsToTxnLegacy(body)
+	if err == nil || code != 0 {
+		return code, err
+	}
+	return decodeAddOffsetsToTxnFlex(body)
+}
+
+func decodeAddOffsetsToTxnLegacy(body []byte) (int16, error) {
 	buf := wire.FromBytes(body)
 	if _, err := buf.ReadInt32(); err != nil {
 		return 0, err
 	}
-	nGroups, err := buf.ReadUvarint()
+	code, err := buf.ReadInt16()
 	if err != nil {
 		return 0, err
 	}
-	for i := 1; i < int(nGroups); i++ {
-		if _, err := buf.ReadCompactString(); err != nil {
-			return 0, err
-		}
-		nTopics, err := buf.ReadUvarint()
-		if err != nil {
-			return 0, err
-		}
-		for j := 1; j < int(nTopics); j++ {
-			if _, err := buf.ReadCompactString(); err != nil {
-				return 0, err
-			}
-			nParts, err := buf.ReadUvarint()
-			if err != nil {
-				return 0, err
-			}
-			for k := 1; k < int(nParts); k++ {
-				if _, err := buf.ReadInt32(); err != nil {
-					return 0, err
-				}
-				code, err := buf.ReadInt16()
-				if err != nil {
-					return 0, err
-				}
-				if code != 0 {
-					return code, nil
-				}
-			}
-		}
+	return code, nil
+}
+
+func decodeAddOffsetsToTxnFlex(body []byte) (int16, error) {
+	buf := wire.FromBytes(body)
+	if _, err := buf.ReadInt32(); err != nil {
+		return 0, err
+	}
+	code, err := buf.ReadInt16()
+	if err != nil {
+		return 0, err
 	}
 	if err := buf.SkipTagSection(); err != nil {
 		return 0, err
 	}
-	return 0, nil
+	return code, nil
+}
+
+// TxnOffsetCommitMeta is consumer group metadata for TxnOffsetCommit v3+.
+type TxnOffsetCommitMeta struct {
+	Generation      int32
+	MemberID        string
+	GroupInstanceID string
 }
 
 // TxnCommittedOffset is a partition offset sent with TxnOffsetCommit.
@@ -339,20 +341,58 @@ type TxnCommittedOffset struct {
 	Offset    int64
 }
 
-func EncodeTxnOffsetCommit(txnID, groupID string, producerID int64, epoch int16, offsets []TxnCommittedOffset) []byte {
-	byTopic := map[string][]TxnCommittedOffset{}
-	order := make([]string, 0)
-	for _, o := range offsets {
-		if _, ok := byTopic[o.Topic]; !ok {
-			order = append(order, o.Topic)
-		}
-		byTopic[o.Topic] = append(byTopic[o.Topic], o)
+func EncodeTxnOffsetCommit(ver int16, txnID, groupID string, producerID int64, epoch int16, meta TxnOffsetCommitMeta, offsets []TxnCommittedOffset) []byte {
+	if ver <= 0 {
+		ver = VerTxnOffsetCommit
 	}
+	if ver >= 3 {
+		return encodeTxnOffsetCommitFlex(ver, txnID, groupID, producerID, epoch, meta, offsets)
+	}
+	return encodeTxnOffsetCommitLegacy(ver, txnID, groupID, producerID, epoch, offsets)
+}
+
+func encodeTxnOffsetCommitLegacy(ver int16, txnID, groupID string, producerID int64, epoch int16, offsets []TxnCommittedOffset) []byte {
+	byTopic := txnOffsetsByTopic(offsets)
+	order := txnOffsetTopicOrder(byTopic)
+	buf := wire.NewBuffer(128)
+	buf.WriteString(txnID)
+	buf.WriteString(groupID)
+	buf.WriteInt64(producerID)
+	buf.WriteInt16(epoch)
+	buf.WriteInt32(int32(len(order)))
+	for _, topic := range order {
+		buf.WriteString(topic)
+		parts := byTopic[topic]
+		buf.WriteInt32(int32(len(parts)))
+		for _, p := range parts {
+			buf.WriteInt32(p.Partition)
+			buf.WriteInt64(p.Offset)
+			if ver >= 2 {
+				buf.WriteInt32(-1)
+			}
+			buf.WriteNullableString(nil)
+		}
+	}
+	return buf.Bytes()
+}
+
+func encodeTxnOffsetCommitFlex(ver int16, txnID, groupID string, producerID int64, epoch int16, meta TxnOffsetCommitMeta, offsets []TxnCommittedOffset) []byte {
+	byTopic := txnOffsetsByTopic(offsets)
+	order := txnOffsetTopicOrder(byTopic)
 	buf := wire.NewBuffer(128)
 	buf.WriteCompactString(txnID)
 	buf.WriteCompactString(groupID)
 	buf.WriteInt64(producerID)
 	buf.WriteInt16(epoch)
+	if ver >= 3 {
+		buf.WriteInt32(meta.Generation)
+		buf.WriteCompactString(meta.MemberID)
+		if meta.GroupInstanceID == "" {
+			buf.WriteUvarint(0)
+		} else {
+			buf.WriteCompactString(meta.GroupInstanceID)
+		}
+	}
 	buf.WriteCompactArrayLen(len(order))
 	for _, topic := range order {
 		buf.WriteCompactString(topic)
@@ -361,6 +401,9 @@ func EncodeTxnOffsetCommit(txnID, groupID string, producerID int64, epoch int16,
 		for _, p := range parts {
 			buf.WriteInt32(p.Partition)
 			buf.WriteInt64(p.Offset)
+			if ver >= 2 {
+				buf.WriteInt32(-1)
+			}
 			buf.WriteCompactNullableString(nil)
 			buf.WriteEmptyTagSection()
 		}
@@ -370,7 +413,70 @@ func EncodeTxnOffsetCommit(txnID, groupID string, producerID int64, epoch int16,
 	return buf.Bytes()
 }
 
-func DecodeTxnOffsetCommit(body []byte) (int16, error) {
+func txnOffsetsByTopic(offsets []TxnCommittedOffset) map[string][]TxnCommittedOffset {
+	byTopic := map[string][]TxnCommittedOffset{}
+	for _, o := range offsets {
+		byTopic[o.Topic] = append(byTopic[o.Topic], o)
+	}
+	return byTopic
+}
+
+func txnOffsetTopicOrder(byTopic map[string][]TxnCommittedOffset) []string {
+	order := make([]string, 0, len(byTopic))
+	for topic := range byTopic {
+		order = append(order, topic)
+	}
+	return order
+}
+
+func DecodeTxnOffsetCommit(ver int16, body []byte) (int16, error) {
+	if ver <= 0 {
+		ver = VerTxnOffsetCommit
+	}
+	if ver >= 3 {
+		return decodeTxnOffsetCommitFlex(body)
+	}
+	code, err := decodeTxnOffsetCommitLegacy(body)
+	if err == nil || code != 0 {
+		return code, err
+	}
+	return decodeTxnOffsetCommitFlex(body)
+}
+
+func decodeTxnOffsetCommitLegacy(body []byte) (int16, error) {
+	buf := wire.FromBytes(body)
+	if _, err := buf.ReadInt32(); err != nil {
+		return 0, err
+	}
+	nTopics, err := buf.ReadInt32()
+	if err != nil {
+		return 0, err
+	}
+	for i := int32(0); i < nTopics; i++ {
+		if _, err := buf.ReadString(); err != nil {
+			return 0, err
+		}
+		nParts, err := buf.ReadInt32()
+		if err != nil {
+			return 0, err
+		}
+		for j := int32(0); j < nParts; j++ {
+			if _, err := buf.ReadInt32(); err != nil {
+				return 0, err
+			}
+			code, err := buf.ReadInt16()
+			if err != nil {
+				return 0, err
+			}
+			if code != 0 {
+				return code, nil
+			}
+		}
+	}
+	return 0, nil
+}
+
+func decodeTxnOffsetCommitFlex(body []byte) (int16, error) {
 	buf := wire.FromBytes(body)
 	if _, err := buf.ReadInt32(); err != nil {
 		return 0, err
@@ -398,6 +504,12 @@ func DecodeTxnOffsetCommit(body []byte) (int16, error) {
 			if code != 0 {
 				return code, nil
 			}
+			if err := buf.SkipTagSection(); err != nil {
+				return 0, err
+			}
+		}
+		if err := buf.SkipTagSection(); err != nil {
+			return 0, err
 		}
 	}
 	if err := buf.SkipTagSection(); err != nil {

@@ -3,6 +3,7 @@ package gokafka
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/sinamohsenifar/gokafka/internal/produce"
@@ -117,8 +118,15 @@ func (t *TransactionalProducer) ProduceWithinTxnResult(ctx context.Context, reco
 	return results, err
 }
 
+// TxnOffsetCommitOptions carries consumer group metadata for SendOffsetsToTxn (TxnOffsetCommit v3+).
+type TxnOffsetCommitOptions struct {
+	Generation      int32
+	MemberID        string
+	GroupInstanceID string
+}
+
 // SendOffsetsToTxn commits consumer group offsets as part of the open transaction (consume-transform-produce).
-func (t *TransactionalProducer) SendOffsetsToTxn(ctx context.Context, groupID string, offsets map[string]map[int32]int64) error {
+func (t *TransactionalProducer) SendOffsetsToTxn(ctx context.Context, groupID string, offsets map[string]map[int32]int64, opts TxnOffsetCommitOptions) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if !t.open {
@@ -130,8 +138,8 @@ func (t *TransactionalProducer) SendOffsetsToTxn(ctx context.Context, groupID st
 	if len(offsets) == 0 {
 		return nil
 	}
-	if err := t.ensureGroupOffsets(ctx, groupID, offsets); err != nil {
-		return err
+	if err := t.ensureGroupOffsets(ctx, groupID); err != nil {
+		return fmt.Errorf("add offsets to transaction: %w", err)
 	}
 	committed := make([]protocol.TxnCommittedOffset, 0)
 	for topic, parts := range offsets {
@@ -141,14 +149,27 @@ func (t *TransactionalProducer) SendOffsetsToTxn(ctx context.Context, groupID st
 			})
 		}
 	}
-	body := protocol.EncodeTxnOffsetCommit(t.txnID, groupID, t.pid.ID, t.pid.Epoch, committed)
-	rb, err := t.client.cluster.Request(ctx, t.coordinator, protocol.APITxnOffsetCommit, protocol.VerTxnOffsetCommit, body)
-	if err != nil {
-		return err
+	gen := opts.Generation
+	if gen == 0 && opts.MemberID == "" && opts.GroupInstanceID == "" {
+		gen = -1
 	}
-	code, err := protocol.DecodeTxnOffsetCommit(rb)
+	meta := protocol.TxnOffsetCommitMeta{
+		Generation:      gen,
+		MemberID:        opts.MemberID,
+		GroupInstanceID: opts.GroupInstanceID,
+	}
+	txnVer := t.client.cluster.NegotiatedVersion(protocol.APITxnOffsetCommit, protocol.VerTxnOffsetCommit)
+	if txnVer < 3 {
+		txnVer = 3
+	}
+	body := protocol.EncodeTxnOffsetCommit(txnVer, t.txnID, groupID, t.pid.ID, t.pid.Epoch, meta, committed)
+	rb, err := t.client.cluster.Request(ctx, t.coordinator, protocol.APITxnOffsetCommit, txnVer, body)
 	if err != nil {
-		return err
+		return fmt.Errorf("txn offset commit request: %w", err)
+	}
+	code, err := protocol.DecodeTxnOffsetCommit(txnVer, rb)
+	if err != nil {
+		return fmt.Errorf("txn offset commit response: %w", err)
 	}
 	if code != 0 {
 		return newKafkaError(code, "", 0, "txn offset commit failed")
@@ -156,20 +177,17 @@ func (t *TransactionalProducer) SendOffsetsToTxn(ctx context.Context, groupID st
 	return nil
 }
 
-func (t *TransactionalProducer) ensureGroupOffsets(ctx context.Context, groupID string, offsets map[string]map[int32]int64) error {
+func (t *TransactionalProducer) ensureGroupOffsets(ctx context.Context, groupID string) error {
 	if _, ok := t.registeredGroups[groupID]; ok {
 		return nil
 	}
-	topics := offsetsToTxnTopics(offsets)
-	body := protocol.EncodeAddOffsetsToTxn(t.txnID, t.pid.ID, t.pid.Epoch, []protocol.TxnGroupOffsets{{
-		GroupID: groupID,
-		Topics:  topics,
-	}})
-	rb, err := t.client.cluster.Request(ctx, t.coordinator, protocol.APIAddOffsetsToTxn, protocol.VerAddOffsetsToTxn, body)
+	addVer := t.client.cluster.NegotiatedVersion(protocol.APIAddOffsetsToTxn, protocol.VerAddOffsetsToTxn)
+	body := protocol.EncodeAddOffsetsToTxn(addVer, t.txnID, t.pid.ID, t.pid.Epoch, groupID)
+	rb, err := t.client.cluster.Request(ctx, t.coordinator, protocol.APIAddOffsetsToTxn, addVer, body)
 	if err != nil {
-		return err
+		return fmt.Errorf("add offsets to transaction (ver=%d): %w", addVer, err)
 	}
-	code, err := protocol.DecodeAddOffsetsToTxn(rb)
+	code, err := protocol.DecodeAddOffsetsToTxn(addVer, rb)
 	if err != nil {
 		return err
 	}
@@ -178,18 +196,6 @@ func (t *TransactionalProducer) ensureGroupOffsets(ctx context.Context, groupID 
 	}
 	t.registeredGroups[groupID] = struct{}{}
 	return nil
-}
-
-func offsetsToTxnTopics(offsets map[string]map[int32]int64) []protocol.TxnTopicPartitions {
-	out := make([]protocol.TxnTopicPartitions, 0, len(offsets))
-	for topic, parts := range offsets {
-		partsList := make([]int32, 0, len(parts))
-		for p := range parts {
-			partsList = append(partsList, p)
-		}
-		out = append(out, protocol.TxnTopicPartitions{Topic: topic, Partitions: partsList})
-	}
-	return out
 }
 
 func (t *TransactionalProducer) ensurePartitions(ctx context.Context, records []Record) error {

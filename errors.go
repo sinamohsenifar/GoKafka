@@ -35,9 +35,9 @@ const (
 	ErrCodeNotEnoughReplicas          ErrorCode = 19
 	ErrCodeNotEnoughReplicasAfterAppend ErrorCode = 20
 	ErrCodeRebalanceInProg   ErrorCode = 27
-	ErrCodeInvalidTxnState      ErrorCode = 37
 	ErrCodeOutOfOrderSequence   ErrorCode = 45
 	ErrCodeInvalidProducerEpoch ErrorCode = 47
+	ErrCodeInvalidTxnState      ErrorCode = 48
 )
 
 // KafkaError wraps a broker error code with context.

@@ -332,7 +332,10 @@ if err != nil {
 	log.Fatal(err)
 }
 
-if err := txn.SendOffsetsToTxn(ctx, "input-group", offsets); err != nil {
+gen, memberID, instID := consumer.GroupMetadata()
+if err := txn.SendOffsetsToTxn(ctx, "input-group", offsets, gokafka.TxnOffsetCommitOptions{
+	Generation: gen, MemberID: memberID, GroupInstanceID: instID,
+}); err != nil {
 	_ = txn.Abort(ctx)
 	log.Fatal(err)
 }

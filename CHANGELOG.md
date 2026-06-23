@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.14] - 2026-06-23
+
+### Fixed
+
+- **AddOffsetsToTxn** — correct Kafka 4 wire format (registers `group_id` only; topic/partition offsets belong in TxnOffsetCommit)
+- **TxnOffsetCommit** — encode `committed_leader_epoch` (v2+) and group metadata (v3+); flex response decode with legacy fallback
+- **SendOffsetsToTxn** — `TxnOffsetCommitOptions` + `Consumer.GroupMetadata()` for consume-transform-produce EOS
+- **INVALID_TXN_STATE (48)** — error code constant aligned with Kafka 4.x
+
+### Added
+
+- Full **CTP integration test** — `SendOffsetsToTxn`, transactional produce, offset advance, and `read_committed` verification
+
 ## [0.20.13] - 2026-06-23
 
 ### Security
