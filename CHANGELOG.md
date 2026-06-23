@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.7] - 2026-06-23
+
+### Fixed
+
+- **CI Kafka wait** — tolerate empty `docker compose ps` output under `pipefail` while the container is still being created
+- **TLS cred files** — write keystore passwords without a trailing newline (apache/kafka docker convention)
+
 ## [0.20.6] - 2026-06-23
 
 ### Fixed

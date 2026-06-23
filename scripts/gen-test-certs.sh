@@ -58,9 +58,9 @@ gen_jks() {
     -alias ca -file "$SECRETS/ca.crt" \
     -keystore "$SECRETS/kafka.truststore.jks" -storepass "$STORE_PASS"
 
-  printf '%s\n' "$STORE_PASS" >"$SECRETS/kafka_keystore_creds"
-  printf '%s\n' "$STORE_PASS" >"$SECRETS/kafka_ssl_key_creds"
-  printf '%s\n' "$STORE_PASS" >"$SECRETS/kafka_truststore_creds"
+  printf '%s' "$STORE_PASS" >"$SECRETS/kafka_keystore_creds"
+  printf '%s' "$STORE_PASS" >"$SECRETS/kafka_ssl_key_creds"
+  printf '%s' "$STORE_PASS" >"$SECRETS/kafka_truststore_creds"
 }
 
 gen_ca

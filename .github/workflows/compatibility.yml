@@ -57,7 +57,7 @@ jobs:
           docker compose pull kafka
           docker compose up -d kafka
           for i in $(seq 1 180); do
-            state=$(docker compose ps -a kafka --format '{{.State}}' 2>/dev/null | head -1)
+            state=$(docker compose ps -a kafka --format '{{.State}}' 2>/dev/null | head -1 || true)
             case "$state" in
               exited|dead)
                 echo "kafka container failed (state=$state):"
