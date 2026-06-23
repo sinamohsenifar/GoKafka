@@ -94,7 +94,7 @@ jobs:
           done
           sleep 15
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:8081/apis/ccompat/v6/subjects >/dev/null; then
+            if curl -sf http://127.0.0.1:8081/apis/ccompat/v6/subjects >/dev/null; then
               echo "schema registry ready"
               break
             fi
@@ -108,13 +108,13 @@ jobs:
 
       - name: Compatibility tests
         env:
-          KAFKA_BROKERS: localhost:9092
-          KAFKA_BROKERS_PLAINTEXT: localhost:9092
-          KAFKA_BROKERS_SSL: localhost:9093
-          KAFKA_BROKERS_SASL_PLAINTEXT: localhost:9094
-          KAFKA_BROKERS_SASL_SSL: localhost:9095
+          KAFKA_BROKERS: 127.0.0.1:9092
+          KAFKA_BROKERS_PLAINTEXT: 127.0.0.1:9092
+          KAFKA_BROKERS_SSL: 127.0.0.1:9093
+          KAFKA_BROKERS_SASL_PLAINTEXT: 127.0.0.1:9094
+          KAFKA_BROKERS_SASL_SSL: 127.0.0.1:9095
           GOKAFKA_SECRETS_DIR: ${{ github.workspace }}/docker/secrets
-          SCHEMA_REGISTRY_URL: http://localhost:8081/apis/ccompat/v6
+          SCHEMA_REGISTRY_URL: http://127.0.0.1:8081/apis/ccompat/v6
         run: |
           if [ "${{ matrix.smoke }}" = "true" ]; then
             go test -tags=integration -race -count=1 -timeout=5m \

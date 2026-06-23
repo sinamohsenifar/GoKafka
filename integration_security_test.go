@@ -9,12 +9,12 @@ import (
 )
 
 func TestIntegrationSecurityPlaintext(t *testing.T) {
-	brokers := integrationBrokerEnv(t, "KAFKA_BROKERS_PLAINTEXT", "localhost:9092")
+	brokers := integrationBrokerEnv(t, "KAFKA_BROKERS_PLAINTEXT", "127.0.0.1:9092")
 	integrationProduceConsume(t, []string{brokers})
 }
 
 func TestIntegrationSecuritySSL(t *testing.T) {
-	brokers := integrationBrokerEnv(t, "KAFKA_BROKERS_SSL", "localhost:9093")
+	brokers := integrationBrokerEnv(t, "KAFKA_BROKERS_SSL", "127.0.0.1:9093")
 	integrationProduceConsume(t, []string{brokers}, gokafka.WithSecurity(gokafka.SecurityConfig{
 		Protocol: gokafka.SecuritySSL,
 		TLS:      testTLSConfig(t),
@@ -22,7 +22,7 @@ func TestIntegrationSecuritySSL(t *testing.T) {
 }
 
 func TestIntegrationSecuritySASLPlain(t *testing.T) {
-	brokers := integrationBrokerEnv(t, "KAFKA_BROKERS_SASL_PLAINTEXT", "localhost:9094")
+	brokers := integrationBrokerEnv(t, "KAFKA_BROKERS_SASL_PLAINTEXT", "127.0.0.1:9094")
 	integrationProduceConsume(t, []string{brokers}, gokafka.WithSecurity(gokafka.SecurityConfig{
 		Protocol: gokafka.SecuritySASLPlaintext,
 		SASL: gokafka.SASLConfig{
@@ -34,7 +34,7 @@ func TestIntegrationSecuritySASLPlain(t *testing.T) {
 }
 
 func TestIntegrationSecuritySASLSCRAM256(t *testing.T) {
-	brokers := integrationBrokerEnv(t, "KAFKA_BROKERS_SASL_PLAINTEXT", "localhost:9094")
+	brokers := integrationBrokerEnv(t, "KAFKA_BROKERS_SASL_PLAINTEXT", "127.0.0.1:9094")
 	integrationProduceConsume(t, []string{brokers}, gokafka.WithSecurity(gokafka.SecurityConfig{
 		Protocol: gokafka.SecuritySASLPlaintext,
 		SASL: gokafka.SASLConfig{
@@ -46,7 +46,7 @@ func TestIntegrationSecuritySASLSCRAM256(t *testing.T) {
 }
 
 func TestIntegrationSecuritySASLSCRAM512(t *testing.T) {
-	brokers := integrationBrokerEnv(t, "KAFKA_BROKERS_SASL_PLAINTEXT", "localhost:9094")
+	brokers := integrationBrokerEnv(t, "KAFKA_BROKERS_SASL_PLAINTEXT", "127.0.0.1:9094")
 	integrationProduceConsume(t, []string{brokers}, gokafka.WithSecurity(gokafka.SecurityConfig{
 		Protocol: gokafka.SecuritySASLPlaintext,
 		SASL: gokafka.SASLConfig{
@@ -58,7 +58,7 @@ func TestIntegrationSecuritySASLSCRAM512(t *testing.T) {
 }
 
 func TestIntegrationSecuritySASLSSL(t *testing.T) {
-	brokers := integrationBrokerEnv(t, "KAFKA_BROKERS_SASL_SSL", "localhost:9095")
+	brokers := integrationBrokerEnv(t, "KAFKA_BROKERS_SASL_SSL", "127.0.0.1:9095")
 	integrationProduceConsume(t, []string{brokers}, gokafka.WithSecurity(gokafka.SecurityConfig{
 		Protocol: gokafka.SecuritySASLSSL,
 		TLS:      testTLSConfig(t),
@@ -71,7 +71,7 @@ func TestIntegrationSecuritySASLSSL(t *testing.T) {
 }
 
 func TestIntegrationSecurityMTLS(t *testing.T) {
-	brokers := integrationBrokerEnv(t, "KAFKA_BROKERS_SSL", "localhost:9093")
+	brokers := integrationBrokerEnv(t, "KAFKA_BROKERS_SSL", "127.0.0.1:9093")
 	// Broker runs with ssl.client.auth=none; mTLS exercises client certificate loading + TLS handshake.
 	integrationProduceConsume(t, []string{brokers}, gokafka.WithSecurity(gokafka.SecurityConfig{
 		Protocol: gokafka.SecuritySSL,

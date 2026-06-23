@@ -15,7 +15,7 @@ import (
 func TestIntegrationSchemaRegistry(t *testing.T) {
 	url := os.Getenv("SCHEMA_REGISTRY_URL")
 	if url == "" {
-		url = "http://localhost:8081/apis/ccompat/v6"
+		url = "http://127.0.0.1:8081/apis/ccompat/v6"
 	}
 	_ = integrationBrokers(t) // skip if kafka env not configured
 
@@ -57,7 +57,7 @@ func TestIntegrationSchemaRegistry(t *testing.T) {
 func TestIntegrationSchemaAvroRoundTrip(t *testing.T) {
 	url := os.Getenv("SCHEMA_REGISTRY_URL")
 	if url == "" {
-		url = "http://localhost:8081/apis/ccompat/v6"
+		url = "http://127.0.0.1:8081/apis/ccompat/v6"
 	}
 	_ = integrationBrokers(t)
 

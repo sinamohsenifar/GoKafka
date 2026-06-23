@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.9] - 2026-06-23
+
+### Fixed
+
+- **CI integration tests** — use `127.0.0.1` for broker/schema-registry endpoints so Linux runners do not dial `localhost` as IPv6 (`::1`) while Docker publishes IPv4 only
+
 ## [0.20.8] - 2026-06-23
 
 ### Fixed

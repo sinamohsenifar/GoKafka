@@ -21,7 +21,7 @@ func integrationBrokers(t *testing.T) []string {
 	t.Helper()
 	b := os.Getenv("KAFKA_BROKERS")
 	if b == "" {
-		t.Skip("KAFKA_BROKERS not set; run docker compose up and export KAFKA_BROKERS=localhost:9092")
+		t.Skip("KAFKA_BROKERS not set; run docker compose up and export KAFKA_BROKERS=127.0.0.1:9092")
 	}
 	return []string{b}
 }
