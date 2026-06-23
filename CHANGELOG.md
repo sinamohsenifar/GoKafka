@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.10] - 2026-06-23
+
+### Fixed
+
+- **Integration test stability** — poll for partition metadata after topic admin ops; run CI integration tests with `-p=1` to reduce flakes under `-race`
+
 ## [0.20.9] - 2026-06-23
 
 ### Fixed

@@ -117,10 +117,10 @@ jobs:
           SCHEMA_REGISTRY_URL: http://127.0.0.1:8081/apis/ccompat/v6
         run: |
           if [ "${{ matrix.smoke }}" = "true" ]; then
-            go test -tags=integration -race -count=1 -timeout=5m \
+            go test -tags=integration -race -count=1 -timeout=5m -p=1 \
               -run 'TestIntegrationProduceConsume|TestIntegrationNegotiatedVersions|TestIntegrationTransactionEOS|TestIntegrationAdminTopicLifecycle|TestIntegrationIncrementalAlterTopicConfigs|TestIntegrationAdminACL|TestIntegrationDescribeBrokerConfigs|TestIntegrationSchemaAvroRoundTrip' ./...
           else
-            go test -tags=integration -race -count=1 -timeout=5m ./...
+            go test -tags=integration -race -count=1 -timeout=5m -p=1 ./...
           fi
 
       - name: Stop stack

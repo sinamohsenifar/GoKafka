@@ -17,6 +17,23 @@ func integrationWaitTopicReady() {
 	time.Sleep(300 * time.Millisecond)
 }
 
+func integrationWaitPartitions(t *testing.T, admin *gokafka.Admin, topic string, want int32) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	for {
+		n, err := admin.TopicPartitions(ctx, topic)
+		if err == nil && n == want {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("topic %s partitions=%d want=%d err=%v", topic, n, want, err)
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+}
+
 func integrationBrokers(t *testing.T) []string {
 	t.Helper()
 	b := os.Getenv("KAFKA_BROKERS")

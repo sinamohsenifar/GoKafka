@@ -34,6 +34,7 @@ func TestIntegrationAdminTopicLifecycle(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	integrationWaitPartitions(t, admin, topic, 3)
 	t.Cleanup(func() { _ = admin.DeleteTopics(context.Background(), topic) })
 
 	desc, err := admin.DescribeTopic(ctx, topic)
@@ -76,14 +77,7 @@ func TestIntegrationAdminTopicLifecycle(t *testing.T) {
 	if err := admin.CreatePartitions(ctx, topic2, 4); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(300 * time.Millisecond)
-	n2, err := admin.TopicPartitions(ctx, topic2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n2 != 4 {
-		t.Fatalf("after create partitions: %d", n2)
-	}
+	integrationWaitPartitions(t, admin, topic2, 4)
 }
 
 func TestIntegrationAdminACL(t *testing.T) {
