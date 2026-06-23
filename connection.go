@@ -2,6 +2,7 @@ package gokafka
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -26,6 +27,9 @@ type ConnectionConfig struct {
 
 	// Limits caps response/decompression sizes and auth cost (zero = library defaults).
 	Limits LimitsConfig
+	// AllowedBrokerHosts restricts metadata-advertised broker hostnames (exact match, case-insensitive).
+	// Bootstrap seed addresses are not filtered. Empty means no restriction.
+	AllowedBrokerHosts []string
 }
 
 // LimitsConfig guards against malicious broker/registry payloads.
@@ -62,4 +66,18 @@ func (c ConnectionConfig) ResolveBrokerAddress(nodeID int32, host string, port i
 		}
 	}
 	return key
+}
+
+// BrokerHostAllowed reports whether a metadata-advertised broker host may be dialed.
+func (c ConnectionConfig) BrokerHostAllowed(host string) bool {
+	if len(c.AllowedBrokerHosts) == 0 {
+		return true
+	}
+	host = strings.ToLower(strings.TrimSpace(host))
+	for _, allowed := range c.AllowedBrokerHosts {
+		if host == strings.ToLower(strings.TrimSpace(allowed)) {
+			return true
+		}
+	}
+	return false
 }

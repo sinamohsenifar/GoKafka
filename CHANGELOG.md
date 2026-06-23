@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.13] - 2026-06-23
+
+### Security
+
+- **Broker allowlist** — `ConnectionConfig.AllowedBrokerHosts` rejects metadata-advertised broker hostnames before dial (SSRF hardening)
+- **Schema pinning** — `SerdeConfig.ExpectedSchemaID`, `PinRegisteredSchemaID`, and `AllowedSchemaIDs` validate wire schema IDs on Avro decode
+
+### Added
+
+- **Sticky assignor** — balanced sticky partition assignment for `sticky` and `cooperative-sticky` protocols
+- **Cooperative incremental rebalance** — cooperative assignors revoke/assign only changed partitions during rebalance
+- **Integration tests** — transactional abort and consume-transform-produce (`SendOffsetsToTxn`) coverage
+
+### Changed
+
+- **Parallel broker I/O** — consumer fetch and producer send fan out per broker concurrently
+- **Async producer** — workers micro-batch records using producer `BatchSize` and `Linger`
+- **Metrics** — reuse static produce/consume label maps; skip hook dispatch when no hooks registered
+
 ## [0.20.12] - 2026-06-23
 
 ### Security

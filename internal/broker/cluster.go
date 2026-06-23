@@ -3,6 +3,7 @@ package broker
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,6 +21,7 @@ type Options struct {
 	MaxResponseBytes  int
 	HostRemap         map[string]string
 	AddressMapper     func(nodeID int32, host string, port int32) string
+	AllowedBrokerHosts []string
 	Observe           *observe.Hub
 }
 
@@ -36,6 +38,19 @@ func (o Options) resolveAddress(nodeID int32, host string, port int32) string {
 		}
 	}
 	return key
+}
+
+func (o Options) brokerHostAllowed(host string) bool {
+	if len(o.AllowedBrokerHosts) == 0 {
+		return true
+	}
+	host = strings.ToLower(strings.TrimSpace(host))
+	for _, allowed := range o.AllowedBrokerHosts {
+		if host == strings.ToLower(strings.TrimSpace(allowed)) {
+			return true
+		}
+	}
+	return false
 }
 
 // Cluster maintains metadata and broker connections.
@@ -208,6 +223,9 @@ func (c *Cluster) Conn(ctx context.Context, nodeID int32) (*transport.Conn, erro
 	}
 	if broker.Host == "" {
 		return nil, fmt.Errorf("broker: unknown node %d", nodeID)
+	}
+	if !c.Opts.brokerHostAllowed(broker.Host) {
+		return nil, fmt.Errorf("broker: host %q not allowed", broker.Host)
 	}
 	addr := c.Opts.resolveAddress(broker.NodeID, broker.Host, broker.Port)
 	conn, err := transport.Dial(ctx, addr, c.ClientID, c.Security, c.Opts.DialTimeout, c.Opts.RequestTimeout, c.Opts.MaxResponseBytes)

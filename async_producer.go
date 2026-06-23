@@ -3,6 +3,7 @@ package gokafka
 import (
 	"context"
 	"sync"
+	"time"
 )
 
 // ProduceResult is the delivery report for async produce.
@@ -60,26 +61,104 @@ func (a *AsyncProducer) Run(ctx context.Context) {
 
 func (a *AsyncProducer) worker(ctx context.Context) {
 	defer a.wg.Done()
-	for {
-		select {
-		case <-ctx.Done():
+	batchSize := a.client.cfg.Producer.BatchSize
+	if batchSize <= 0 {
+		batchSize = 100
+	}
+	linger := a.client.cfg.Producer.Linger
+	if linger <= 0 {
+		linger = 5 * time.Millisecond
+	}
+
+	batch := make([]Record, 0, batchSize)
+	var flushTimer *time.Timer
+	var flushCh <-chan time.Time
+
+	stopTimer := func() {
+		if flushTimer == nil {
 			return
-		case <-a.closed:
-			return
-		case r, ok := <-a.in:
-			if !ok {
-				return
+		}
+		if !flushTimer.Stop() {
+			select {
+			case <-flushTimer.C:
+			default:
 			}
-			results, err := a.prod.ProduceSyncResult(ctx, r)
+		}
+		flushCh = nil
+	}
+
+	armTimer := func() {
+		if flushTimer == nil {
+			flushTimer = time.NewTimer(linger)
+			flushCh = flushTimer.C
+			return
+		}
+		if !flushTimer.Stop() {
+			select {
+			case <-flushTimer.C:
+			default:
+			}
+		}
+		flushTimer.Reset(linger)
+		flushCh = flushTimer.C
+	}
+
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		results, err := a.prod.ProduceSyncResult(ctx, batch...)
+		for _, r := range batch {
 			res := ProduceResult{Record: r, Err: err}
-			if err == nil && len(results) > 0 {
-				res.Result = results[0]
+			if err == nil {
+				for _, pr := range results {
+					if asyncRecordMatch(pr.Record, r) {
+						res.Result = pr
+						break
+					}
+				}
 			}
 			select {
 			case a.out <- res:
 			case <-ctx.Done():
 				return
 			}
+		}
+		batch = batch[:0]
+		stopTimer()
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			flush()
+			if flushTimer != nil {
+				flushTimer.Stop()
+			}
+			return
+		case <-a.closed:
+			flush()
+			if flushTimer != nil {
+				flushTimer.Stop()
+			}
+			return
+		case r, ok := <-a.in:
+			if !ok {
+				flush()
+				if flushTimer != nil {
+					flushTimer.Stop()
+				}
+				return
+			}
+			batch = append(batch, r)
+			if len(batch) == 1 {
+				armTimer()
+			}
+			if len(batch) >= batchSize {
+				flush()
+			}
+		case <-flushCh:
+			flush()
 		}
 	}
 }
@@ -102,4 +181,24 @@ func (a *AsyncProducer) Send(ctx context.Context, r Record) error {
 	case a.in <- r:
 		return nil
 	}
+}
+
+func asyncRecordMatch(a, b Record) bool {
+	if a.Topic != b.Topic || a.Partition != b.Partition {
+		return false
+	}
+	if len(a.Key) != len(b.Key) || len(a.Value) != len(b.Value) {
+		return false
+	}
+	for i := range a.Key {
+		if a.Key[i] != b.Key[i] {
+			return false
+		}
+	}
+	for i := range a.Value {
+		if a.Value[i] != b.Value[i] {
+			return false
+		}
+	}
+	return true
 }

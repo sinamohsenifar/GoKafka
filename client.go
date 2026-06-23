@@ -51,13 +51,14 @@ func NewClient(cfg Config) (*Client, error) {
 		cfg:     cfg,
 		observe: hub,
 		cluster: broker.New(cfg.Brokers, cfg.ClientID, cfg.Security, broker.Options{
-			DialTimeout:       cfg.Connection.DialTimeout,
-			RequestTimeout:    cfg.Connection.RequestTimeout,
-			MetadataTTL:       cfg.Connection.MetadataTTL,
-			MaxResponseBytes:  limits.MaxResponseBytes,
-			HostRemap:         cfg.Connection.HostRemap,
-			AddressMapper:     cfg.Connection.BrokerAddressMapper,
-			Observe:           hub,
+			DialTimeout:        cfg.Connection.DialTimeout,
+			RequestTimeout:     cfg.Connection.RequestTimeout,
+			MetadataTTL:        cfg.Connection.MetadataTTL,
+			MaxResponseBytes:   limits.MaxResponseBytes,
+			HostRemap:          cfg.Connection.HostRemap,
+			AddressMapper:      cfg.Connection.BrokerAddressMapper,
+			AllowedBrokerHosts: cfg.Connection.AllowedBrokerHosts,
+			Observe:            hub,
 		}),
 	}
 	ctx := context.Background()

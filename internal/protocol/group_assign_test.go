@@ -53,6 +53,24 @@ func TestComputeGroupAssignmentsRoundRobin(t *testing.T) {
 	}
 }
 
+func TestComputeGroupAssignmentsSticky(t *testing.T) {
+	members := []MemberSubscription{
+		{MemberID: "a", Topics: []string{"t"}},
+		{MemberID: "b", Topics: []string{"t"}},
+		{MemberID: "c", Topics: []string{"t"}},
+	}
+	topicParts := map[string][]int32{"t": {0, 1, 2, 3, 4}}
+	out := ComputeGroupAssignments("sticky", members, topicParts)
+	counts := map[string]int{"a": 0, "b": 0, "c": 0}
+	for mid, raw := range out {
+		parts := ParseAssignmentTopics(t, raw)
+		counts[mid] = len(parts)
+	}
+	if counts["a"] != 2 || counts["b"] != 2 || counts["c"] != 1 {
+		t.Fatalf("sticky counts=%v", counts)
+	}
+}
+
 func TestDecodeConsumerSubscriptionLegacy(t *testing.T) {
 	raw := EncodeConsumerSubscription([]string{"a", "b"}, false)
 	topics, err := DecodeConsumerSubscription(raw)

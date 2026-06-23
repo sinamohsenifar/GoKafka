@@ -99,6 +99,8 @@ func ComputeGroupAssignments(protocolName string, members []MemberSubscription, 
 		switch protocolName {
 		case "roundrobin":
 			assignRoundRobin(topic, sortedParts, mids, byMember)
+		case "sticky", "cooperative-sticky":
+			assignSticky(topic, sortedParts, mids, byMember)
 		default:
 			assignRange(topic, sortedParts, mids, byMember)
 		}
@@ -146,6 +148,45 @@ func assignRoundRobin(topic string, parts []int32, members []string, byMember ma
 			appendTopicParts(byMember, mid, topic, buckets[i])
 		}
 	}
+}
+
+// assignSticky balances partitions across members (initial sticky assignment without prior state).
+func assignSticky(topic string, parts []int32, members []string, byMember map[string][]TopicPartitionAssignment) {
+	if len(members) == 0 {
+		return
+	}
+	counts := make(map[string]int, len(members))
+	for _, mid := range members {
+		counts[mid] = stickyTopicCount(byMember[mid], topic)
+	}
+	sorted := append([]int32(nil), parts...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	for _, p := range sorted {
+		mid := stickyPickMember(counts, members)
+		counts[mid]++
+		appendTopicParts(byMember, mid, topic, []int32{p})
+	}
+}
+
+func stickyTopicCount(assignments []TopicPartitionAssignment, topic string) int {
+	for _, a := range assignments {
+		if a.Topic == topic {
+			return len(a.Partitions)
+		}
+	}
+	return 0
+}
+
+func stickyPickMember(counts map[string]int, members []string) string {
+	best := members[0]
+	bestCount := counts[best]
+	for _, mid := range members[1:] {
+		if c := counts[mid]; c < bestCount || (c == bestCount && mid < best) {
+			best = mid
+			bestCount = c
+		}
+	}
+	return best
 }
 
 func appendTopicParts(byMember map[string][]TopicPartitionAssignment, memberID, topic string, parts []int32) {

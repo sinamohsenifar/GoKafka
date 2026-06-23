@@ -79,39 +79,91 @@ func (c *Consumer) Poll(ctx context.Context) ([]Record, error) {
 		isolation = 1
 	}
 
-	var out []Record
-	for node, parts := range byNode {
-		body := protocol.EncodeFetchRequest(c.group, parts, 500, 1, 50<<20, isolation)
-		rb, err := c.client.cluster.Request(ctx, node, protocol.APIFetch, protocol.VerFetch, body)
-		if err != nil {
-			c.client.observe.Metrics.OnConsume(0, err)
-			return nil, err
-		}
-		fetched, err := protocol.DecodeFetchResponse(rb)
+	group := c.group
+	nodes := make([]int32, 0, len(byNode))
+	for node := range byNode {
+		nodes = append(nodes, node)
+	}
+	if len(nodes) == 1 {
+		recs, err := c.fetchFromBroker(ctx, group, nodes[0], byNode[nodes[0]], isolation, maxPoll)
 		if err != nil {
 			if errors.Is(err, protocol.ErrRebalanceInProgress) {
-				if c.isCooperative() {
-					if rbErr := c.cooperativeRejoin(ctx); rbErr != nil {
-						return nil, rbErr
-					}
-				} else if rbErr := c.Rebalance(ctx); rbErr != nil {
-					return nil, rbErr
-				}
-				return c.Poll(ctx)
+				return c.handleFetchRebalance(ctx)
 			}
 			return nil, err
 		}
-		for _, fr := range fetched {
-			out = append(out, Record{
-				Topic: fr.Topic, Partition: fr.Partition, Offset: fr.Offset,
-				Key: fr.Key, Value: fr.Value, Headers: fetchHeaders(fr.Headers),
-				Timestamp: time.UnixMilli(fr.Timestamp),
-			})
-			c.bumpOffset(fr.Topic, fr.Partition, fr.Offset+1)
-			c.client.observe.Metrics.OnConsume(len(fr.Value), nil)
-			if len(out) >= maxPoll {
-				return out, nil
+		return recs, nil
+	}
+	type nodeFetch struct {
+		records []Record
+		err     error
+	}
+	fetches := make([]nodeFetch, len(nodes))
+	var wg sync.WaitGroup
+	for i, node := range nodes {
+		wg.Add(1)
+		go func(i int, node int32) {
+			defer wg.Done()
+			fetches[i].records, fetches[i].err = c.fetchFromBroker(ctx, group, node, byNode[node], isolation, maxPoll)
+		}(i, node)
+	}
+	wg.Wait()
+	var out []Record
+	for _, f := range fetches {
+		if f.err != nil {
+			if errors.Is(f.err, protocol.ErrRebalanceInProgress) {
+				return c.handleFetchRebalance(ctx)
 			}
+			return nil, f.err
+		}
+		out = append(out, f.records...)
+		if len(out) >= maxPoll {
+			return out[:maxPoll], nil
+		}
+	}
+	return out, nil
+}
+
+func (c *Consumer) handleFetchRebalance(ctx context.Context) ([]Record, error) {
+	if c.isCooperative() {
+		if err := c.cooperativeRejoin(ctx); err != nil {
+			return nil, err
+		}
+	} else if err := c.Rebalance(ctx); err != nil {
+		return nil, err
+	}
+	return c.Poll(ctx)
+}
+
+func (c *Consumer) fetchFromBroker(
+	ctx context.Context,
+	group string,
+	node int32,
+	parts []protocol.FetchPartition,
+	isolation int8,
+	maxRecords int,
+) ([]Record, error) {
+	body := protocol.EncodeFetchRequest(group, parts, 500, 1, 50<<20, isolation)
+	rb, err := c.client.cluster.Request(ctx, node, protocol.APIFetch, protocol.VerFetch, body)
+	if err != nil {
+		c.client.observe.Metrics.OnConsume(0, err)
+		return nil, err
+	}
+	fetched, err := protocol.DecodeFetchResponse(rb)
+	if err != nil {
+		return nil, err
+	}
+	var out []Record
+	for _, fr := range fetched {
+		out = append(out, Record{
+			Topic: fr.Topic, Partition: fr.Partition, Offset: fr.Offset,
+			Key: fr.Key, Value: fr.Value, Headers: fetchHeaders(fr.Headers),
+			Timestamp: time.UnixMilli(fr.Timestamp),
+		})
+		c.bumpOffset(fr.Topic, fr.Partition, fr.Offset+1)
+		c.client.observe.Metrics.OnConsume(len(fr.Value), nil)
+		if maxRecords > 0 && len(out) >= maxRecords {
+			break
 		}
 	}
 	return out, nil
@@ -300,7 +352,8 @@ joinLoop:
 		break joinLoop
 	}
 
-	if err := c.applyAssignment(ctx, assignmentBytes, coord); err != nil {
+	listenersNotified, err := c.applyAssignment(ctx, assignmentBytes, coord)
+	if err != nil {
 		return err
 	}
 	c.mu.Lock()
@@ -310,22 +363,28 @@ joinLoop:
 	if err := c.loadCommittedOffsets(ctx, coord); err != nil {
 		return err
 	}
-	c.mu.Lock()
-	c.notifyAssignedLocked(ctx)
-	c.mu.Unlock()
+	if !listenersNotified {
+		c.mu.Lock()
+		c.notifyAssignedLocked(ctx)
+		c.mu.Unlock()
+	}
 	c.ensureHeartbeat()
 	_ = c.heartbeat(ctx)
 	return nil
 }
 
-func (c *Consumer) applyAssignment(ctx context.Context, raw []byte, _ int32) error {
+func (c *Consumer) applyAssignment(ctx context.Context, raw []byte, _ int32) (bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.notifyRevokedLocked(ctx)
 	parsed, err := protocol.ParseMemberAssignment(raw)
 	if err != nil {
-		return err
+		return false, err
 	}
+	if c.isCooperative() && len(parsed) > 0 {
+		c.applyAssignmentIncrementalLocked(ctx, parsed)
+		return true, nil
+	}
+	c.notifyRevokedLocked(ctx)
 	if len(parsed) > 0 {
 		c.assignments = nil
 		for _, a := range parsed {
@@ -335,11 +394,11 @@ func (c *Consumer) applyAssignment(ctx context.Context, raw []byte, _ int32) err
 				})
 			}
 		}
-		return nil
+		return false, nil
 	}
 	if c.isCooperative() {
 		c.assignments = nil
-		return nil
+		return false, nil
 	}
 	// Fallback for single-member dev clusters when coordinator returns empty assignment.
 	c.assignments = nil
@@ -356,7 +415,48 @@ func (c *Consumer) applyAssignment(ctx context.Context, raw []byte, _ int32) err
 			}
 		}
 	}
-	return nil
+	return false, nil
+}
+
+func (c *Consumer) applyAssignmentIncrementalLocked(ctx context.Context, parsed []protocol.TopicPartitionAssignment) {
+	newSet := make(map[partKey]struct{})
+	for _, a := range parsed {
+		for _, p := range a.Partitions {
+			newSet[partKey{a.Topic, p}] = struct{}{}
+		}
+	}
+	kept := c.assignments[:0]
+	var revoked []TopicPartition
+	for _, a := range c.assignments {
+		k := partKey{a.topic, a.partition}
+		if _, ok := newSet[k]; ok {
+			kept = append(kept, a)
+		} else {
+			revoked = append(revoked, TopicPartition{Topic: a.topic, Partition: a.partition, Offset: a.offset})
+		}
+	}
+	if c.listener != nil && len(revoked) > 0 {
+		c.listener.OnPartitionsRevoked(ctx, revoked)
+	}
+	existing := make(map[partKey]struct{}, len(kept))
+	for _, a := range kept {
+		existing[partKey{a.topic, a.partition}] = struct{}{}
+	}
+	var assigned []TopicPartition
+	for _, a := range parsed {
+		for _, p := range a.Partitions {
+			k := partKey{a.Topic, p}
+			if _, ok := existing[k]; ok {
+				continue
+			}
+			kept = append(kept, partitionOffset{topic: a.Topic, partition: p, offset: 0})
+			assigned = append(assigned, TopicPartition{Topic: a.Topic, Partition: p})
+		}
+	}
+	c.assignments = kept
+	if c.listener != nil && len(assigned) > 0 {
+		c.listener.OnPartitionsAssigned(ctx, assigned)
+	}
 }
 
 func (c *Consumer) loadCommittedOffsets(ctx context.Context, coord int32) error {

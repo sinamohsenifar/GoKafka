@@ -26,6 +26,12 @@ type SerdeConfig struct {
 	Format  Format
 	// ProtobufMessageIndexes for FormatProtobuf (default [0]).
 	ProtobufMessageIndexes []int
+	// ExpectedSchemaID if > 0, DecodeAvro rejects wire schema IDs that differ.
+	ExpectedSchemaID int
+	// PinRegisteredSchemaID when true, DecodeAvro requires wire schema ID to match EnsureRegistered ID.
+	PinRegisteredSchemaID bool
+	// AllowedSchemaIDs if non-empty, DecodeAvro rejects wire schema IDs not in this list.
+	AllowedSchemaIDs []int
 }
 
 // Serde encodes and decodes values with Confluent wire framing.
@@ -98,7 +104,29 @@ func (s *Serde) DecodeAvro(ctx context.Context, data []byte) (map[string]any, er
 	if err != nil {
 		return nil, err
 	}
-	text, err := s.reg.SchemaByID(ctx, int(h.SchemaID))
+	wireID := int(h.SchemaID)
+	if s.cfg.ExpectedSchemaID > 0 && wireID != s.cfg.ExpectedSchemaID {
+		return nil, fmt.Errorf("schema: unexpected schema id %d", wireID)
+	}
+	if len(s.cfg.AllowedSchemaIDs) > 0 {
+		allowed := false
+		for _, id := range s.cfg.AllowedSchemaIDs {
+			if wireID == id {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return nil, fmt.Errorf("schema: schema id %d not allowed", wireID)
+		}
+	}
+	s.mu.RLock()
+	registeredID := s.id
+	s.mu.RUnlock()
+	if s.cfg.PinRegisteredSchemaID && registeredID > 0 && wireID != registeredID {
+		return nil, fmt.Errorf("schema: wire schema id %d does not match registered id %d", wireID, registeredID)
+	}
+	text, err := s.reg.SchemaByID(ctx, wireID)
 	if err != nil {
 		return nil, err
 	}
