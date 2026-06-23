@@ -19,11 +19,21 @@
 .env
 .env.*
 *.jks
+*.p12
 
-# Local test TLS (committed under docker/secrets/)
-*.pem
-*.key
-!docker/secrets/**
+# Generated integration TLS (regenerate: bash scripts/gen-test-certs.sh)
+docker/secrets/*.jks
+docker/secrets/*.p12
+docker/secrets/*.pem
+docker/secrets/*.key
+docker/secrets/*.csr
+docker/secrets/*.ext
+docker/secrets/ca.srl
+docker/secrets/*_creds
+
+# Committed integration config only
+!docker/secrets/kafka_server_jaas.conf
+!docker/secrets/client-scram.properties
 
 # Coverage
 coverage.out

@@ -37,17 +37,44 @@ jobs:
         with:
           go-version: "1.24.x"
 
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Generate test TLS material
-        run: bash scripts/gen-test-certs.sh
+        run: |
+          bash scripts/gen-test-certs.sh
+          keytool -list -keystore docker/secrets/kafka.keystore.jks \
+            -storepass "$(tr -d '\n' < docker/secrets/kafka_keystore_creds)" >/dev/null
 
       - name: Start Kafka stack
         env:
           KAFKA_IMAGE: apache/kafka:${{ matrix.kafka }}
         run: |
           set -euxo pipefail
-          docker compose pull kafka schema-registry
-          docker compose up -d kafka --wait --wait-timeout 420
-          docker compose up -d schema-registry --wait --wait-timeout 180
+          docker compose pull kafka
+          docker compose up -d kafka
+          for i in $(seq 1 180); do
+            if ! docker compose ps kafka --status running 2>/dev/null | grep -q running; then
+              echo "kafka container not running:"
+              docker compose ps -a
+              docker compose logs --tail=120 kafka
+              exit 1
+            fi
+            if docker compose exec -T kafka /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1; then
+              echo "kafka ready (attempt $i)"
+              break
+            fi
+            sleep 2
+            if [ "$i" -eq 180 ]; then
+              docker compose logs --tail=120 kafka
+              exit 1
+            fi
+          done
+          docker compose pull schema-registry
+          docker compose up -d schema-registry
           docker compose run --rm kafka-init
 
       - name: Wait for Kafka

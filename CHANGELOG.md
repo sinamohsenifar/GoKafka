@@ -7,12 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.5] - 2026-06-23
+
+### Fixed
+
+- **CI TLS** — stop tracking generated keystores/credentials in git; install Java in CI and verify keystore after `gen-test-certs.sh` so Kafka does not exit on SSL credential mismatch
+
 ## [0.20.4] - 2026-06-23
 
 ### Fixed
 
 - **FindCoordinator** — retry on coordinator loading / not-available (errors 14 and 15); fixes transactional EOS integration on fresh brokers
-- **CI integration stack** — use `docker compose --wait`, longer Kafka healthcheck, bounded heap for GitHub Actions runners
+- **CI integration stack** — use `docker compose --wait`, longer Kafka healthcheck, bounded heap for GitHub Actions runners; stop committing generated keystores (always regenerate in CI)
 
 ## [0.20.3] - 2026-06-23
 
