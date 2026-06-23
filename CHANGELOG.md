@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.8] - 2026-06-23
+
+### Fixed
+
+- **CI TLS permissions** — world-readable keystore/credential files so the Kafka container user can read mounted secrets on Linux runners
+
 ## [0.20.7] - 2026-06-23
 
 ### Fixed

@@ -69,7 +69,7 @@ gen_cert client "gokafka-client"
 cp "$SECRETS/broker.crt" "$SECRETS/broker-chain.pem"
 gen_jks
 
-chmod 0644 "$SECRETS"/*.crt "$SECRETS"/*.pem "$SECRETS"/*.jks 2>/dev/null || true
-chmod 0600 "$SECRETS"/*.key "$SECRETS"/*_creds 2>/dev/null || true
+chmod 0644 "$SECRETS"/*.crt "$SECRETS"/*.pem "$SECRETS"/*.jks "$SECRETS"/*_creds "$SECRETS/kafka_server_jaas.conf" 2>/dev/null || true
+chmod 0600 "$SECRETS"/*.key 2>/dev/null || true
 
 echo "Generated test TLS material in $SECRETS"
