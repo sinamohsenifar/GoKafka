@@ -26,20 +26,9 @@ jobs:
       - name: Start Kafka stack
         run: |
           set -euxo pipefail
-          docker compose pull
-          docker compose up -d kafka
-          for i in $(seq 1 60); do
-            if docker compose exec -T kafka /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1; then
-              echo "kafka broker ready"
-              break
-            fi
-            sleep 2
-            if [ "$i" -eq 60 ]; then
-              docker compose logs kafka
-              exit 1
-            fi
-          done
-          docker compose up -d schema-registry
+          docker compose pull kafka schema-registry
+          docker compose up -d kafka --wait --wait-timeout 420
+          docker compose up -d schema-registry --wait --wait-timeout 180
           docker compose run --rm kafka-init
 
       - name: Wait for Kafka and Schema Registry

@@ -6,12 +6,18 @@ USER="${SCRAM_USER:-gokafka}"
 PASS="${SCRAM_PASSWORD:-gokafka-secret}"
 
 echo "Waiting for Kafka at $BOOTSTRAP..."
-for i in $(seq 1 60); do
+ready=0
+for i in $(seq 1 90); do
   if /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server "$BOOTSTRAP" >/dev/null 2>&1; then
+    ready=1
     break
   fi
   sleep 2
 done
+if [ "$ready" -ne 1 ]; then
+  echo "Kafka not reachable at $BOOTSTRAP after 180s"
+  exit 1
+fi
 
 echo "Creating SCRAM credentials for user $USER..."
 /opt/kafka/bin/kafka-configs.sh --bootstrap-server "$BOOTSTRAP" \

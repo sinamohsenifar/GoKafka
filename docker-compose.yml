@@ -57,6 +57,7 @@ services:
       KAFKA_SUPER_USERS: User:admin;User:ANONYMOUS
       KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "true"
       KAFKA_TRANSACTIONAL_ID_AUTHORIZATION_ENABLE: "false"
+      KAFKA_HEAP_OPTS: "-Xmx512M -Xms256M"
       KAFKA_SASL_ENABLED_MECHANISMS: PLAIN,SCRAM-SHA-256,SCRAM-SHA-512
       KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
       KAFKA_OPTS: >-
@@ -73,9 +74,9 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
       interval: 5s
-      timeout: 10s
-      retries: 12
-      start_period: 20s
+      timeout: 15s
+      retries: 36
+      start_period: 40s
 
   kafka-init:
     image: ${KAFKA_IMAGE:-apache/kafka:3.9.2}
