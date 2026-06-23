@@ -239,18 +239,44 @@ func (c *Cluster) recordRequest(apiKey int16, d time.Duration, err error) {
 // FindCoordinator resolves the broker node id for a group or transactional id.
 func (c *Cluster) FindCoordinator(ctx context.Context, key string, keyType int8) (int32, error) {
 	body := protocol.EncodeFindCoordinatorRequest(key, keyType)
-	resp, err := c.RequestViaSeed(ctx, protocol.APIFindCoordinator, protocol.VerFindCoordinator, body)
-	if err != nil {
-		return 0, err
+	wait := 100 * time.Millisecond
+	maxWait := 2 * time.Second
+	var lastErr error
+	for attempt := 0; attempt < 20; attempt++ {
+		if ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
+		resp, err := c.RequestViaSeed(ctx, protocol.APIFindCoordinator, protocol.VerFindCoordinator, body)
+		if err != nil {
+			return 0, err
+		}
+		coord, err := protocol.DecodeFindCoordinatorResponse(resp)
+		if err != nil {
+			return 0, err
+		}
+		if coord.ErrorCode == 0 {
+			return coord.NodeID, nil
+		}
+		lastErr = fmt.Errorf("broker: find coordinator: error %d", coord.ErrorCode)
+		if !protocol.CoordinatorRetriable(coord.ErrorCode) {
+			return 0, lastErr
+		}
+		if attempt == 19 {
+			break
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return 0, ctx.Err()
+		case <-timer.C:
+		}
+		wait *= 2
+		if wait > maxWait {
+			wait = maxWait
+		}
 	}
-	coord, err := protocol.DecodeFindCoordinatorResponse(resp)
-	if err != nil {
-		return 0, err
-	}
-	if coord.ErrorCode != 0 {
-		return 0, fmt.Errorf("broker: find coordinator: error %d", coord.ErrorCode)
-	}
-	return coord.NodeID, nil
+	return 0, lastErr
 }
 
 // TransactionCoordinator resolves the transaction coordinator for a transactional id.

@@ -16,6 +16,16 @@ var ErrMemberIDRequired = errors.New("protocol: member id required")
 // ErrorCodeMemberIDRequired is Kafka error code 79 (MEMBER_ID_REQUIRED).
 const ErrorCodeMemberIDRequired int16 = 79
 
+const (
+	ErrorCodeCoordinatorLoadInProgress int16 = 14
+	ErrorCodeCoordinatorNotAvailable   int16 = 15
+)
+
+// CoordinatorRetriable reports whether FindCoordinator should be retried.
+func CoordinatorRetriable(code int16) bool {
+	return code == ErrorCodeCoordinatorLoadInProgress || code == ErrorCodeCoordinatorNotAvailable
+}
+
 // APIError is a non-zero Kafka error code from a protocol response.
 type APIError struct {
 	Op   string
