@@ -38,18 +38,22 @@ jobs:
           docker compose pull kafka
           docker compose up -d kafka
           for i in $(seq 1 180); do
-            if ! docker compose ps kafka --status running 2>/dev/null | grep -q running; then
-              echo "kafka container not running:"
-              docker compose ps -a
-              docker compose logs --tail=120 kafka
-              exit 1
-            fi
+            state=$(docker compose ps -a kafka --format '{{.State}}' 2>/dev/null | head -1)
+            case "$state" in
+              exited|dead)
+                echo "kafka container failed (state=$state):"
+                docker compose ps -a
+                docker compose logs --tail=120 kafka
+                exit 1
+                ;;
+            esac
             if docker compose exec -T kafka /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1; then
               echo "kafka ready (attempt $i)"
               break
             fi
             sleep 2
             if [ "$i" -eq 180 ]; then
+              echo "kafka not ready (state=${state:-unknown})"
               docker compose logs --tail=120 kafka
               exit 1
             fi

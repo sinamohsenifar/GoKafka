@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.6] - 2026-06-23
+
+### Fixed
+
+- **CI Kafka wait** — do not treat a still-starting container as a crash during the readiness loop
+
 ## [0.20.5] - 2026-06-23
 
 ### Fixed
