@@ -86,6 +86,12 @@ func decodeMetadataResponseFlex(version int16, body []byte) (MetadataResponse, e
 		}
 	}
 
+	clusterID, err := buf.ReadCompactNullableString()
+	if err != nil {
+		return MetadataResponse{}, err
+	}
+	resp.ClusterID = clusterID
+
 	controller, err := buf.ReadInt32()
 	if err != nil {
 		return MetadataResponse{}, err
@@ -101,7 +107,12 @@ func decodeMetadataResponseFlex(version int16, body []byte) (MetadataResponse, e
 		if err != nil {
 			return MetadataResponse{}, err
 		}
-		name, err := buf.ReadCompactString()
+		var name string
+		if version >= 12 {
+			name, err = buf.ReadCompactNullableString()
+		} else {
+			name, err = buf.ReadCompactString()
+		}
 		if err != nil {
 			return MetadataResponse{}, err
 		}
@@ -134,6 +145,11 @@ func decodeMetadataResponseFlex(version int16, body []byte) (MetadataResponse, e
 			if err != nil {
 				return MetadataResponse{}, err
 			}
+			if version >= 7 {
+				if _, err := buf.ReadInt32(); err != nil { // leader_epoch
+					return MetadataResponse{}, err
+				}
+			}
 			replicas, err := readCompactInt32Array(buf)
 			if err != nil {
 				return MetadataResponse{}, err
@@ -154,8 +170,23 @@ func decodeMetadataResponseFlex(version int16, body []byte) (MetadataResponse, e
 				return MetadataResponse{}, err
 			}
 		}
+		if version >= 8 {
+			if _, err := buf.ReadInt32(); err != nil { // topic_authorized_operations
+				return MetadataResponse{}, err
+			}
+		}
 		resp.Topics = append(resp.Topics, tm)
 		if err := buf.SkipTagSection(); err != nil {
+			return MetadataResponse{}, err
+		}
+	}
+	if version >= 8 && version <= 10 {
+		if _, err := buf.ReadInt32(); err != nil { // cluster_authorized_operations
+			return MetadataResponse{}, err
+		}
+	}
+	if version >= 13 {
+		if _, err := buf.ReadInt16(); err != nil { // top-level error_code
 			return MetadataResponse{}, err
 		}
 	}

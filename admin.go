@@ -245,8 +245,17 @@ func (a *Admin) describeConfigs(ctx context.Context, resources []protocol.Config
 	if err := a.client.cluster.Refresh(ctx, nil); err != nil {
 		return nil, err
 	}
-	ctrl := a.client.cluster.Metadata().Controller
-	rb, err := a.client.cluster.Request(ctx, ctrl, protocol.APIDescribeConfigs, ver, body)
+	nodeID := a.client.cluster.Metadata().Controller
+	for _, r := range resources {
+		if r.Type == protocol.ConfigResourceBroker {
+			var id int32
+			if _, err := fmt.Sscanf(r.Name, "%d", &id); err == nil && id > 0 {
+				nodeID = id
+				break
+			}
+		}
+	}
+	rb, err := a.client.cluster.Request(ctx, nodeID, protocol.APIDescribeConfigs, ver, body)
 	if err != nil {
 		return nil, err
 	}

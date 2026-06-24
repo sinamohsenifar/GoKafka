@@ -44,11 +44,11 @@ func DefaultProduceSettings() ProduceSettings {
 	return ProduceSettings{Acks: -1, TimeoutMs: 30000, Compression: 0}
 }
 
-func EncodeProduceRequest(records []ProduceRecord, settings ProduceSettings) ([]byte, error) {
+func EncodeProduceRequest(apiVersion int16, records []ProduceRecord, settings ProduceSettings) ([]byte, error) {
 	if settings.TimeoutMs <= 0 {
 		settings.TimeoutMs = 30000
 	}
-	if VerProduce >= 9 {
+	if apiVersion >= 9 {
 		return encodeProduceRequestFlex(records, settings)
 	}
 	return encodeProduceRequestLegacy(records, settings)
@@ -118,6 +118,7 @@ func encodeProduceRequestFlex(records []ProduceRecord, settings ProduceSettings)
 			buf.WriteCompactBytes(batch)
 			buf.WriteEmptyTagSection()
 		}
+		buf.WriteEmptyTagSection()
 	}
 	buf.WriteEmptyTagSection()
 	return buf.Bytes(), nil
@@ -281,9 +282,9 @@ func groupByTopic(records []ProduceRecord) []topicParts {
 	return out
 }
 
-func DecodeProduceResponse(body []byte) ([]ProduceResult, error) {
-	if VerProduce >= 9 {
-		return decodeProduceResponseFlex(body)
+func DecodeProduceResponse(apiVersion int16, body []byte) ([]ProduceResult, error) {
+	if apiVersion >= 9 {
+		return decodeProduceResponseFlex(apiVersion, body)
 	}
 	return decodeProduceResponseLegacy(body)
 }
@@ -332,11 +333,8 @@ func decodeProduceResponseLegacy(body []byte) ([]ProduceResult, error) {
 	return out, nil
 }
 
-func decodeProduceResponseFlex(body []byte) ([]ProduceResult, error) {
+func decodeProduceResponseFlex(apiVersion int16, body []byte) ([]ProduceResult, error) {
 	buf := wire.FromBytes(body)
-	if _, err := buf.ReadInt32(); err != nil {
-		return nil, err
-	}
 	nTopics, err := buf.ReadUvarint()
 	if err != nil {
 		return nil, err
@@ -364,17 +362,40 @@ func decodeProduceResponseFlex(body []byte) ([]ProduceResult, error) {
 			if err != nil {
 				return nil, err
 			}
-			if _, err := buf.ReadInt64(); err != nil {
+			if _, err := buf.ReadInt64(); err != nil { // log_append_time_ms
 				return nil, err
 			}
-			if _, err := buf.ReadInt64(); err != nil {
+			if _, err := buf.ReadInt64(); err != nil { // log_start_offset
 				return nil, err
+			}
+			if apiVersion >= 8 {
+				nRecErrs, err := buf.ReadUvarint()
+				if err != nil {
+					return nil, err
+				}
+				for k := 1; k < int(nRecErrs); k++ {
+					if _, err := buf.ReadInt32(); err != nil { // batch_index
+						return nil, err
+					}
+					if _, err := buf.ReadCompactNullableString(); err != nil { // batch_index_error_message
+						return nil, err
+					}
+				}
+				if _, err := buf.ReadCompactNullableString(); err != nil { // error_message
+					return nil, err
+				}
 			}
 			out = append(out, ProduceResult{Topic: name, Partition: part, Offset: offset, ErrorCode: errCode})
 			if err := buf.SkipTagSection(); err != nil {
 				return nil, err
 			}
 		}
+		if err := buf.SkipTagSection(); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := buf.ReadInt32(); err != nil { // throttle_time_ms
+		return nil, err
 	}
 	if err := buf.SkipTagSection(); err != nil {
 		return nil, err

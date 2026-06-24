@@ -9,7 +9,7 @@ import (
 
 func TestProduceRequestAcksEncoding(t *testing.T) {
 	settings := protocol.ProduceSettings{Acks: -1, TimeoutMs: 30000}
-	body, err := protocol.EncodeProduceRequest([]protocol.ProduceRecord{
+	body, err := protocol.EncodeProduceRequest(protocol.VerProduce, []protocol.ProduceRecord{
 		{Topic: "t", Partition: 0, Value: []byte("x")},
 	}, settings)
 	if err != nil {
@@ -33,7 +33,7 @@ func TestProduceRequestTransactionalIDEncoding(t *testing.T) {
 		Acks: -1, TimeoutMs: 30000,
 		Transactional: true, TransactionalID: "my-txn",
 	}
-	body, err := protocol.EncodeProduceRequest([]protocol.ProduceRecord{
+	body, err := protocol.EncodeProduceRequest(protocol.VerProduce, []protocol.ProduceRecord{
 		{Topic: "t", Partition: 0, Value: []byte("x")},
 	}, settings)
 	if err != nil {

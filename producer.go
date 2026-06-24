@@ -292,16 +292,17 @@ func (p *Producer) produceToBroker(
 	settings protocol.ProduceSettings,
 	results []ProduceRecordResult,
 ) error {
-	body, err := protocol.EncodeProduceRequest(batch, settings)
+	ver := p.client.cluster.NegotiatedVersion(protocol.APIProduce, protocol.VerProduce)
+	body, err := protocol.EncodeProduceRequest(ver, batch, settings)
 	if err != nil {
 		return err
 	}
-	rb, err := p.client.cluster.Request(ctx, node, protocol.APIProduce, protocol.VerProduce, body)
+	rb, err := p.client.cluster.Request(ctx, node, protocol.APIProduce, ver, body)
 	if err != nil {
 		p.client.observe.Metrics.OnProduce(0, err)
 		return err
 	}
-	brokerResults, err := protocol.DecodeProduceResponse(rb)
+	brokerResults, err := protocol.DecodeProduceResponse(ver, rb)
 	if err != nil {
 		return err
 	}

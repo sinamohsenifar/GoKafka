@@ -144,7 +144,7 @@ func (c *Cluster) refresh(ctx context.Context, topics []string) error {
 	if err != nil {
 		return err
 	}
-	body, err := transport.ResponseBody(resp)
+	body, err := transport.ResponseBodyForAPI(resp, protocol.APIMetadata, ver)
 	if err != nil {
 		return err
 	}
@@ -234,6 +234,7 @@ func (c *Cluster) LeaderBroker(topic string, partition int32) (protocol.Broker, 
 }
 
 func (c *Cluster) Conn(ctx context.Context, nodeID int32) (*transport.Conn, error) {
+	c.refreshSASLToken(ctx)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if conn, ok := c.conns[nodeID]; ok {
@@ -253,7 +254,6 @@ func (c *Cluster) Conn(ctx context.Context, nodeID int32) (*transport.Conn, erro
 		return nil, fmt.Errorf("broker: host %q not allowed", broker.Host)
 	}
 	addr := c.Opts.resolveAddress(broker.NodeID, broker.Host, broker.Port)
-	c.refreshSASLToken(ctx)
 	conn, err := transport.Dial(ctx, addr, c.ClientID, c.Security, c.Opts.DialTimeout, c.Opts.RequestTimeout, c.Opts.MaxResponseBytes)
 	if err != nil {
 		return nil, err

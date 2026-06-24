@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-06-24
+
+### Fixed
+
+- **Metadata refresh (CI)** — `cluster.Refresh` strips flex response headers via `ResponseBodyForAPI(APIMetadata, ver)`; generic `ResponseBody` corrupted topic/controller parsing (`topic not found`, `unknown node 33554432`)
+- **Metadata flex decode** — read `ClusterId`, `LeaderEpoch`, nullable topic names (v12+), and `TopicAuthorizedOperations` in metadata v9–12 responses
+- **Produce flex v9** — per-topic tag sections in requests; correct flex response field order (`Responses` then `ThrottleTimeMs`, v8+ record error fields)
+- **Flex response headers** — strip header tag sections for API key 0 (Produce) and all flexible APIs in `ResponseBodyForAPI`
+- **Cluster.Conn deadlock** — call `refreshSASLToken` before acquiring the cluster mutex
+- **DescribeBrokerConfigs** — broker-scoped config requests target the named broker node instead of always using the controller id from metadata
+
 ## [0.24.0] - 2026-06-24
 
 ### Added

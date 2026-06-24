@@ -22,15 +22,16 @@ func Send(ctx context.Context, cl *broker.Cluster, records []protocol.ProduceRec
 	}
 	var all []protocol.ProduceResult
 	for node, batch := range byBroker {
-		body, err := protocol.EncodeProduceRequest(batch, settings)
+		ver := cl.NegotiatedVersion(protocol.APIProduce, protocol.VerProduce)
+		body, err := protocol.EncodeProduceRequest(ver, batch, settings)
 		if err != nil {
 			return nil, err
 		}
-		rb, err := cl.Request(ctx, node, protocol.APIProduce, protocol.VerProduce, body)
+		rb, err := cl.Request(ctx, node, protocol.APIProduce, ver, body)
 		if err != nil {
 			return nil, err
 		}
-		results, err := protocol.DecodeProduceResponse(rb)
+		results, err := protocol.DecodeProduceResponse(ver, rb)
 		if err != nil {
 			return nil, err
 		}
