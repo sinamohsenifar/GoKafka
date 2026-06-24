@@ -25,9 +25,10 @@ GoKafka targets **Apache Kafka 3.4+** through the latest 3.9.x / 4.x releases us
 | Metadata | 12 | yes | yes | Topic UUIDs (v10+) |
 | JoinGroup | 6 | yes | yes | Flex v6+ |
 | OffsetCommit | 8 | yes | yes | Flex v8+ |
-| ShareGroupHeartbeat | 1 | 4.0+ | KIP-932 share groups |
-| ShareFetch | 1 | 4.0+ | KIP-932 record delivery |
-| ShareAcknowledge | 1 | 4.0+ | KIP-932 delivery ack |
+| ShareGroupHeartbeat | 1 | — | — | KIP-932; Kafka 4.0+ only |
+| ShareFetch | 1 | — | — | KIP-932 record delivery |
+| ShareAcknowledge | 1 | — | — | KIP-932 delivery ack |
+| DescribeCluster | 1 | 3.7+ | yes | Wire API 60 |
 | CreateTopics | 4 | yes | yes | `TopicSpec` with configs |
 | DescribeConfigs | 4 | yes | yes | Topic + broker configs |
 | CreatePartitions | 2 | yes | yes | Flex v2 |
@@ -38,7 +39,5 @@ GoKafka targets **Apache Kafka 3.4+** through the latest 3.9.x / 4.x releases us
 
 ## Roadmap
 
-- Flex Produce v9+, Fetch v12+ where brokers require them
-- DescribeCluster wire API (v1) — metadata fallback today
-- GSSAPI/Kerberos SASL — see `docs/GSSAPI.md`
-- zstd compression — see `docs/ZSTD.md`
+- Full in-process Kerberos/KDC (SPNEGO pass-through shipped)
+- KIP-932 ShareFetch v2 (RENEW ack, KIP-1206/1222) when brokers require it
