@@ -62,6 +62,25 @@ func Dial(ctx context.Context, addr, clientID string, sec auth.Config, dialTimeo
 	return c, nil
 }
 
+// Reauthenticate refreshes OAuth tokens (when TokenProvider is set) and re-runs SASL.
+func (c *Conn) Reauthenticate(ctx context.Context) error {
+	if !c.security.SASLEnabled() {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	sec := c.security
+	if sec.SASL.TokenProvider != nil && sec.SASL.Mechanism == auth.SASLOAuth {
+		token, err := sec.SASL.TokenProvider(ctx)
+		if err != nil {
+			return fmt.Errorf("transport: oauth token refresh: %w", err)
+		}
+		sec.SASL.Token = token
+		c.security = sec
+	}
+	return auth.Handshake(ctx, c, sec)
+}
+
 func (c *Conn) Close() error {
 	if c.netConn == nil {
 		return nil

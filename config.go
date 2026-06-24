@@ -15,6 +15,7 @@ type Config struct {
 	Brokers       []string
 	ClientID      string
 	ConsumerGroup string
+	ShareGroup    string // KIP-932 share group id (mutually exclusive with ConsumerGroup per client use)
 
 	Connection     ConnectionConfig
 	Security       auth.Config

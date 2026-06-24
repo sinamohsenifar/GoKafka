@@ -58,6 +58,7 @@ Compression on produce: **none**, **gzip**, **snappy**, **lz4**, **zstd** (pure 
 | Poll loop | `Consumer.Poll` | Custom processing, backpressure control |
 | Worker pool | `Consumer.Run` + `Concurrency.ConsumerWorkers` | Parallel handlers; commit after success when `WithAutoCommit(true)` |
 | Consumer groups | `WithConsumerGroup` | Scalable consumption, partition assignment |
+| Share groups (KIP-932) | `ShareConsumer` + `WithShareGroup` | Queue semantics, broker-assigned delivery |
 | Next-gen groups (KIP-848) | `WithGroupProtocol(GroupProtocolNextGen)` | Broker-driven assignment (Kafka 3.7+ / 4.x) |
 | Static membership | `WithGroupInstanceID` | Faster rebalance on rolling restarts |
 | Cooperative sticky | `AssignorCooperativeSticky` | Incremental rebalance (KIP-429 style) |
@@ -118,8 +119,6 @@ go test -tags=integration -count=1 -timeout=5m ./...
 ## Gaps & roadmap (not yet in GoKafka)
 
 - Full in-process Kerberos/KDC (SPNEGO pass-through only today)
-- Share consumer groups (KIP-932)
-- OAuth automatic reconnect refresh on long-lived connections (TokenProvider at dial today)
 - Kafka Connect, ksqlDB, Flink — external systems; Schema Registry REST client is supported
 
 ## Related ecosystem services

@@ -83,7 +83,7 @@ Compression is applied only when compressed size is smaller than uncompressed (b
 
 | KIP | Feature | Status |
 |-----|---------|--------|
-| KIP-932 | Share consumer groups | ❌ Roadmap |
+| KIP-932 | Share consumer groups | 🔶 | `TestIntegrationShareConsumer` (Kafka 4.0+) |
 | KIP-848 | New consumer protocol | 🔶 Experimental (`GroupProtocolNextGen`) |
 
 ## Best practices enforced in GoKafka

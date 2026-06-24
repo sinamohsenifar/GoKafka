@@ -108,15 +108,10 @@ func (a *AsyncProducer) worker(ctx context.Context) {
 			return
 		}
 		results, err := a.prod.ProduceSyncResult(ctx, batch...)
-		for _, r := range batch {
+		for i, r := range batch {
 			res := ProduceResult{Record: r, Err: err}
-			if err == nil {
-				for _, pr := range results {
-					if asyncRecordMatch(pr.Record, r) {
-						res.Result = pr
-						break
-					}
-				}
+			if err == nil && i < len(results) {
+				res.Result = results[i]
 			}
 			select {
 			case a.out <- res:
@@ -181,24 +176,4 @@ func (a *AsyncProducer) Send(ctx context.Context, r Record) error {
 	case a.in <- r:
 		return nil
 	}
-}
-
-func asyncRecordMatch(a, b Record) bool {
-	if a.Topic != b.Topic || a.Partition != b.Partition {
-		return false
-	}
-	if len(a.Key) != len(b.Key) || len(a.Value) != len(b.Value) {
-		return false
-	}
-	for i := range a.Key {
-		if a.Key[i] != b.Key[i] {
-			return false
-		}
-	}
-	for i := range a.Value {
-		if a.Value[i] != b.Value[i] {
-			return false
-		}
-	}
-	return true
 }

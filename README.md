@@ -11,7 +11,7 @@ GoKafka is a pure Go client for Apache Kafka. It speaks the Kafka binary protoco
 The API is built around `context.Context`, functional options, and explicit error types. It targets Kafka **3.4+** and **KRaft** clusters, with negotiated API versions at connect time.
 
 ```bash
-go get github.com/sinamohsenifar/gokafka@v0.22.0
+go get github.com/sinamohsenifar/gokafka@v0.23.0
 ```
 
 **Requirements:** Go 1.22+ · Kafka 3.4+ (KRaft recommended; 4.x is KRaft-only). CI tests Go 1.22–1.24 against Kafka 3.9.2 and 4.3.0.

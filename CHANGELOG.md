@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-06-24
+
+### Added
+
+- **KIP-932 share consumer groups** — `ShareConsumer`, `WithShareGroup`, ShareGroupHeartbeat/ShareFetch/ShareAcknowledge wire (APIs 76–79); `Acknowledge` + `Run` helpers
+- Integration test `TestIntegrationShareConsumer` (skips on brokers without share APIs)
+- **OAuth mid-session refresh** — `TokenProvider` refreshes token before reconnect; `Conn.Reauthenticate` + one retry on request failure
+- **Producer config helpers** — `WithProducerAcks`, `WithProducerCompression` for explicit zero values
+
+### Fixed
+
+- **Async producer delivery matching** — `ProduceSyncResult` preserves input order; O(n) index mapping instead of O(n²) byte compare
+- **Seed broker allowlist** — `AllowedBrokerHosts` now applies to bootstrap seed dials
+- Share assignment no longer holds consumer mutex during metadata lookups
+
+### Changed
+
+- Producer `sendRecords` returns results aligned with input record order
+
 ## [0.22.0] - 2026-06-24
 
 ### Fixed

@@ -25,7 +25,9 @@ GoKafka targets **Apache Kafka 3.4+** through the latest 3.9.x / 4.x releases us
 | Metadata | 12 | yes | yes | Topic UUIDs (v10+) |
 | JoinGroup | 6 | yes | yes | Flex v6+ |
 | OffsetCommit | 8 | yes | yes | Flex v8+ |
-| DescribeCluster | 1 | 3.7+ | yes | Wire API 60 with metadata fallback |
+| ShareGroupHeartbeat | 1 | 4.0+ | KIP-932 share groups |
+| ShareFetch | 1 | 4.0+ | KIP-932 record delivery |
+| ShareAcknowledge | 1 | 4.0+ | KIP-932 delivery ack |
 | CreateTopics | 4 | yes | yes | `TopicSpec` with configs |
 | DescribeConfigs | 4 | yes | yes | Topic + broker configs |
 | CreatePartitions | 2 | yes | yes | Flex v2 |

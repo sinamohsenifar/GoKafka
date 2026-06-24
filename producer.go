@@ -190,13 +190,18 @@ func (p *Producer) sendOnce(ctx context.Context, records []Record) ([]ProduceRec
 	return p.sendRecords(ctx, records, recordSendOpts{pid: pid, idState: idState})
 }
 
+type indexedRecord struct {
+	idx int
+	rec Record
+}
+
 // sendRecords produces records using optional idempotent producer id/state (for transactions).
 func (p *Producer) sendRecords(ctx context.Context, records []Record, opts recordSendOpts) ([]ProduceRecordResult, error) {
 	protoByKey := map[partKey][]protocol.ProduceRecord{}
-	inputByKey := map[partKey][]Record{}
+	inputByKey := map[partKey][]indexedRecord{}
 	byBroker := map[int32][]protocol.ProduceRecord{}
 
-	for _, r := range records {
+	for i, r := range records {
 		part, leader, err := p.resolvePartition(r)
 		if err != nil {
 			p.client.observe.Metrics.OnProduce(len(r.Value), err)
@@ -208,7 +213,7 @@ func (p *Producer) sendRecords(ctx context.Context, records []Record, opts recor
 			Headers: recordHeaders(r.Headers), Timestamp: timeNow(r.Timestamp),
 		}
 		protoByKey[key] = append(protoByKey[key], pr)
-		inputByKey[key] = append(inputByKey[key], r)
+		inputByKey[key] = append(inputByKey[key], indexedRecord{idx: i, rec: r})
 		byBroker[leader] = append(byBroker[leader], pr)
 	}
 
@@ -243,24 +248,22 @@ func (p *Producer) sendRecords(ctx context.Context, records []Record, opts recor
 	}
 
 	settings := p.produceSettings(nextSeq, opts.pid, opts.transactional)
-	var allResults []ProduceRecordResult
+	results := make([]ProduceRecordResult, len(records))
 
 	nodes := make([]int32, 0, len(byBroker))
 	for node := range byBroker {
 		nodes = append(nodes, node)
 	}
 	if len(nodes) == 1 {
-		res, err := p.produceToBroker(ctx, nodes[0], byBroker[nodes[0]], inputByKey, settings)
-		if err != nil {
+		if err := p.produceToBroker(ctx, nodes[0], byBroker[nodes[0]], inputByKey, settings, results); err != nil {
 			rollbackPartitions(partBatches)
 			return nil, err
 		}
-		return res, nil
+		return results, nil
 	}
 
 	type brokerOut struct {
-		results []ProduceRecordResult
-		err     error
+		err error
 	}
 	outs := make([]brokerOut, len(nodes))
 	var wg sync.WaitGroup
@@ -268,7 +271,7 @@ func (p *Producer) sendRecords(ctx context.Context, records []Record, opts recor
 		wg.Add(1)
 		go func(i int, node int32) {
 			defer wg.Done()
-			outs[i].results, outs[i].err = p.produceToBroker(ctx, node, byBroker[node], inputByKey, settings)
+			outs[i].err = p.produceToBroker(ctx, node, byBroker[node], inputByKey, settings, results)
 		}(i, node)
 	}
 	wg.Wait()
@@ -277,51 +280,50 @@ func (p *Producer) sendRecords(ctx context.Context, records []Record, opts recor
 			rollbackPartitions(partBatches)
 			return nil, o.err
 		}
-		allResults = append(allResults, o.results...)
 	}
-	return allResults, nil
+	return results, nil
 }
 
 func (p *Producer) produceToBroker(
 	ctx context.Context,
 	node int32,
 	batch []protocol.ProduceRecord,
-	inputByKey map[partKey][]Record,
+	inputByKey map[partKey][]indexedRecord,
 	settings protocol.ProduceSettings,
-) ([]ProduceRecordResult, error) {
+	results []ProduceRecordResult,
+) error {
 	body, err := protocol.EncodeProduceRequest(batch, settings)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	rb, err := p.client.cluster.Request(ctx, node, protocol.APIProduce, protocol.VerProduce, body)
 	if err != nil {
 		p.client.observe.Metrics.OnProduce(0, err)
-		return nil, err
+		return err
 	}
 	brokerResults, err := protocol.DecodeProduceResponse(rb)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	var results []ProduceRecordResult
 	for _, res := range brokerResults {
 		if res.ErrorCode != 0 {
 			ke := newKafkaError(res.ErrorCode, res.Topic, res.Partition, "produce failed")
 			p.client.observe.Metrics.OnProduce(0, ke)
-			return nil, ke
+			return ke
 		}
 		inputs := inputByKey[partKey{res.Topic, res.Partition}]
-		for i, r := range inputs {
+		for i, inp := range inputs {
 			off := res.Offset
 			if len(inputs) > 1 {
 				off = res.Offset + int64(i)
 			}
-			results = append(results, ProduceRecordResult{
-				Record: r, Topic: res.Topic, Partition: res.Partition, Offset: off,
-			})
-			p.client.observe.Metrics.OnProduce(len(r.Value), nil)
+			results[inp.idx] = ProduceRecordResult{
+				Record: inp.rec, Topic: res.Topic, Partition: res.Partition, Offset: off,
+			}
+			p.client.observe.Metrics.OnProduce(len(inp.rec.Value), nil)
 		}
 	}
-	return results, nil
+	return nil
 }
 
 func recordHeaders(hdrs []Header) [][2][]byte {

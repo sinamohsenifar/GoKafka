@@ -13,6 +13,11 @@ func WithClientID(id string) Option {
 	return func(c *Config) { c.ClientID = id }
 }
 
+// WithShareGroup sets the KIP-932 share group id.
+func WithShareGroup(group string) Option {
+	return func(c *Config) { c.ShareGroup = group }
+}
+
 // WithConsumerGroup sets the consumer group id.
 func WithConsumerGroup(group string) Option {
 	return func(c *Config) { c.ConsumerGroup = group }
@@ -21,6 +26,16 @@ func WithConsumerGroup(group string) Option {
 // WithSecurity sets connection security (TLS + SASL).
 func WithSecurity(sec SecurityConfig) Option {
 	return func(c *Config) { c.Security = sec }
+}
+
+// WithProducerAcks sets producer acknowledgement level explicitly (including AcksNone).
+func WithProducerAcks(acks Acks) Option {
+	return func(c *Config) { c.Producer.Acks = acks }
+}
+
+// WithProducerCompression sets record batch compression explicitly (including CompressionNone).
+func WithProducerCompression(codec CompressionCodec) Option {
+	return func(c *Config) { c.Producer.Compression = codec }
 }
 
 // WithProducer merges producer settings into the client config.

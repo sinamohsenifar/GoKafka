@@ -253,6 +253,7 @@ func (c *Cluster) Conn(ctx context.Context, nodeID int32) (*transport.Conn, erro
 		return nil, fmt.Errorf("broker: host %q not allowed", broker.Host)
 	}
 	addr := c.Opts.resolveAddress(broker.NodeID, broker.Host, broker.Port)
+	c.refreshSASLToken(ctx)
 	conn, err := transport.Dial(ctx, addr, c.ClientID, c.Security, c.Opts.DialTimeout, c.Opts.RequestTimeout, c.Opts.MaxResponseBytes)
 	if err != nil {
 		return nil, err
@@ -273,6 +274,13 @@ func (c *Cluster) Request(ctx context.Context, nodeID int32, apiKey, apiVersion 
 	}
 	resp, err := conn.Request(ctx, apiKey, apiVersion, body)
 	if err != nil {
+		if c.Security.SASLEnabled() && c.Security.SASL.TokenProvider != nil {
+			if reauthErr := conn.Reauthenticate(ctx); reauthErr == nil {
+				resp, err = conn.Request(ctx, apiKey, apiVersion, body)
+			}
+		}
+	}
+	if err != nil {
 		c.Invalidate(nodeID)
 		c.recordRequest(apiKey, time.Since(start), err)
 		return nil, err
@@ -290,6 +298,11 @@ func (c *Cluster) seed(ctx context.Context) (*transport.Conn, error) {
 	c.mu.RUnlock()
 	var lastErr error
 	for _, s := range c.Seeds {
+		if host, _, ok := strings.Cut(s, ":"); ok && !c.Opts.brokerHostAllowed(host) {
+			lastErr = fmt.Errorf("broker: seed host %q not allowed", host)
+			continue
+		}
+		c.refreshSASLToken(ctx)
 		conn, err := transport.Dial(ctx, s, c.ClientID, c.Security, c.Opts.DialTimeout, c.Opts.RequestTimeout, c.Opts.MaxResponseBytes)
 		if err != nil {
 			lastErr = err
@@ -389,6 +402,22 @@ func (c *Cluster) apiVerMuLock(negotiated map[int16]int16) {
 	c.mu.Lock()
 	c.apiVersions = negotiated
 	c.mu.Unlock()
+}
+
+func (c *Cluster) refreshSASLToken(ctx context.Context) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.Security.SASL.TokenProvider == nil || c.Security.SASL.Mechanism != auth.SASLOAuth {
+		return
+	}
+	if token, err := c.Security.SASL.TokenProvider(ctx); err == nil {
+		c.Security.SASL.Token = token
+	}
+}
+
+// SupportsAPI reports whether the broker negotiated a non-zero version for an API key.
+func (c *Cluster) SupportsAPI(apiKey int16) bool {
+	return c.NegotiatedVersion(apiKey, 0) > 0
 }
 
 func (c *Cluster) negotiatedVersion(apiKey, fallback int16) int16 {

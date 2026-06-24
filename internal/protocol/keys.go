@@ -28,6 +28,10 @@ const (
 	APISaslAuthenticate int16 = 36
 	APIConsumerGroupHeartbeat int16 = 68
 	APIConsumerGroupDescribe  int16 = 69
+	APIShareGroupHeartbeat    int16 = 76
+	APIShareGroupDescribe     int16 = 77
+	APIShareFetch             int16 = 78
+	APIShareAcknowledge       int16 = 79
 )
 
 // Negotiated API version caps (client max; broker may be lower).
@@ -57,4 +61,7 @@ const (
 	VerSaslHandshake    int16 = 1
 	VerSaslAuthenticate int16 = 1
 	VerConsumerGroupHeartbeat int16 = 1
+	VerShareGroupHeartbeat    int16 = 1
+	VerShareFetch             int16 = 1
+	VerShareAcknowledge       int16 = 1
 )
