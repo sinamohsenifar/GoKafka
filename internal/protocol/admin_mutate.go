@@ -487,18 +487,18 @@ const (
 	ConfigOpDelete int8 = 1
 )
 
-func EncodeIncrementalAlterConfigsRequest(version int16, resources map[string][]ConfigAlteration) []byte {
+func EncodeIncrementalAlterConfigsRequest(version int16, resourceType int8, resources map[string][]ConfigAlteration) []byte {
 	if version >= 1 {
-		return encodeIncrementalAlterConfigsFlex(resources)
+		return encodeIncrementalAlterConfigsFlex(resourceType, resources)
 	}
-	return encodeIncrementalAlterConfigsLegacy(resources)
+	return encodeIncrementalAlterConfigsLegacy(resourceType, resources)
 }
 
-func encodeIncrementalAlterConfigsLegacy(resources map[string][]ConfigAlteration) []byte {
+func encodeIncrementalAlterConfigsLegacy(resourceType int8, resources map[string][]ConfigAlteration) []byte {
 	buf := wire.NewBuffer(64)
 	buf.WriteInt32(int32(len(resources)))
 	for name, alters := range resources {
-		buf.WriteInt8(ConfigResourceTopic)
+		buf.WriteInt8(resourceType)
 		buf.WriteString(name)
 		buf.WriteInt32(int32(len(alters)))
 		for _, a := range alters {
@@ -515,11 +515,11 @@ func encodeIncrementalAlterConfigsLegacy(resources map[string][]ConfigAlteration
 	return buf.Bytes()
 }
 
-func encodeIncrementalAlterConfigsFlex(resources map[string][]ConfigAlteration) []byte {
+func encodeIncrementalAlterConfigsFlex(resourceType int8, resources map[string][]ConfigAlteration) []byte {
 	buf := wire.NewBuffer(64)
 	buf.WriteCompactArrayLen(len(resources))
 	for name, alters := range resources {
-		buf.WriteInt8(ConfigResourceTopic)
+		buf.WriteInt8(resourceType)
 		buf.WriteCompactString(name)
 		buf.WriteCompactArrayLen(len(alters))
 		for _, a := range alters {

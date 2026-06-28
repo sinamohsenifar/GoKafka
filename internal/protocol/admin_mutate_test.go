@@ -19,7 +19,7 @@ func TestFirstTopicError(t *testing.T) {
 
 func TestEncodeIncrementalAlterConfigsRequest(t *testing.T) {
 	val := "1"
-	body := protocol.EncodeIncrementalAlterConfigsRequest(0, map[string][]protocol.ConfigAlteration{
+	body := protocol.EncodeIncrementalAlterConfigsRequest(0, protocol.ConfigResourceTopic, map[string][]protocol.ConfigAlteration{
 		"t": {{Name: "retention.ms", Value: &val}},
 	})
 	if len(body) == 0 {

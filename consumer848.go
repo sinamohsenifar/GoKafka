@@ -3,7 +3,7 @@ package gokafka
 import (
 	"context"
 	"crypto/rand"
-	"encoding/binary"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"time"
@@ -16,17 +16,17 @@ func (c *Consumer) useNextGenGroup() bool {
 	return c.client.cfg.Consumer.GroupProtocol == GroupProtocolNextGen
 }
 
+// newMemberUUID generates a group member id in Kafka's canonical Uuid string
+// form: URL-safe base64 of 16 random bytes, no padding (22 chars), matching
+// Uuid.randomUuid().toString() in the Java client. This is required by the
+// ShareFetch handler (KIP-932), which parses the member id via Uuid.fromString;
+// a hyphenated RFC-4122 string is rejected as "too long to be decoded as a
+// base64 UUID". The classic KIP-848 path treats it as an opaque key, so the
+// same form is valid there too.
 func newMemberUUID() string {
 	var b [16]byte
 	_, _ = rand.Read(b[:])
-	b[6] = (b[6] & 0x0f) | 0x40
-	b[8] = (b[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-		binary.BigEndian.Uint32(b[0:4]),
-		binary.BigEndian.Uint16(b[4:6]),
-		binary.BigEndian.Uint16(b[6:8]),
-		binary.BigEndian.Uint16(b[8:10]),
-		b[10:16])
+	return base64.RawURLEncoding.EncodeToString(b[:])
 }
 
 func (c *Consumer) serverAssignor848() string {

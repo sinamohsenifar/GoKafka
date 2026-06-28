@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Static group membership** — `group.instance.id` is now sent on `JoinGroup`, `SyncGroup`, `Heartbeat`, and `LeaveGroup`, enabling KIP-345 static membership.
 - **KIP-848 / KIP-932 heartbeat decode** — read the nullable `Assignment` struct via its presence byte and skip trailing tag sections in `ConsumerGroupHeartbeat` and `ShareGroupHeartbeat` responses.
 - **KIP-848 join** — send an empty (non-null) topic-partition list on first join (`memberEpoch == 0`) as the broker requires.
+- **KIP-932 share consumer (end-to-end)** — `ShareConsumer.Poll`/`Acknowledge` now work against a live broker. Several bugs fixed together:
+  - Member ids are generated as Kafka `Uuid` strings (URL-safe base64, 22 chars); the previous hyphenated RFC-4122 form made the broker reject `ShareFetch` with `UNKNOWN_SERVER_ERROR` (`Uuid.fromString`: "too long to be decoded as a base64 UUID").
+  - `ShareFetch` response decode reads the `CurrentLeader` struct tags, per-`AcquiredRecords` tags, per-topic tags, and the trailing `NodeEndpoints` array (previously overran the buffer once records were present).
+  - `ShareAcknowledge` request encode emits the missing per-`AcknowledgementBatch` and per-`AcknowledgeTopic` tag sections (broker previously rejected it with `BufferUnderflowException`).
+  - `Poll` runs fetch rounds until records arrive or the context ends — the first `ShareFetch` only initializes broker-side share state and returns empty.
+  - `WithConsumeFromBeginning(true)` now sets the group config `share.auto.offset.reset=earliest` before the first fetch, so records produced before the consumer joins are delivered.
+
+### Added
+
+- **GROUP config resource (type 32)** — `IncrementalAlterConfigsRequest` can target group configs (`protocol.ConfigResourceGroup`), used to set `share.auto.offset.reset` for share groups.
 
 ### Changed
 

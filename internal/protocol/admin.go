@@ -4,7 +4,7 @@ import "github.com/sinamohsenifar/gokafka/internal/wire"
 
 // ConsumerGroupListing is a group id from ListGroups.
 type ConsumerGroupListing struct {
-	GroupID string
+	GroupID      string
 	ProtocolType string
 }
 
@@ -592,4 +592,5 @@ func decodeDescribeConfigsFlex(version int16, body []byte) (map[string][]ConfigE
 const (
 	ConfigResourceTopic  int8 = 2
 	ConfigResourceBroker int8 = 4
+	ConfigResourceGroup  int8 = 32
 )

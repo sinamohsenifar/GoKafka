@@ -38,9 +38,11 @@ func EncodeShareAcknowledgeRequest(req ShareAcknowledgeRequest) []byte {
 				buf.WriteInt64(ab.LastOffset)
 				buf.WriteCompactArrayLen(1)
 				buf.WriteInt8(int8(ab.Type))
+				buf.WriteEmptyTagSection() // acknowledgement_batch tags
 			}
-			buf.WriteEmptyTagSection()
+			buf.WriteEmptyTagSection() // acknowledge_partition tags
 		}
+		buf.WriteEmptyTagSection() // acknowledge_topic tags
 	}
 	buf.WriteEmptyTagSection()
 	return buf.Bytes()

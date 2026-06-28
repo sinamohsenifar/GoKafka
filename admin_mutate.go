@@ -72,7 +72,7 @@ func (a *Admin) IncrementalAlterTopicConfigs(ctx context.Context, alters map[str
 	if ver < 0 {
 		ver = protocol.VerIncrementalAlterConfigs
 	}
-	body := protocol.EncodeIncrementalAlterConfigsRequest(ver, resources)
+	body := protocol.EncodeIncrementalAlterConfigsRequest(ver, protocol.ConfigResourceTopic, resources)
 	resp, err := a.requestAny(ctx, protocol.APIIncrementalAlterConfigs, ver, body)
 	if err != nil {
 		return err

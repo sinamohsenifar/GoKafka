@@ -166,6 +166,9 @@ func DecodeShareFetchResponse(body []byte, topicName func(wire.UUID) (string, bo
 			if _, err := buf.ReadInt32(); err != nil { // current_leader.leader_epoch
 				return out, err
 			}
+			if err := buf.SkipTagSection(); err != nil { // current_leader struct tags
+				return out, err
+			}
 			records, err := buf.ReadCompactBytes()
 			if err != nil {
 				return out, err
@@ -194,13 +197,41 @@ func DecodeShareFetchResponse(body []byte, topicName func(wire.UUID) (string, bo
 				if _, err := buf.ReadInt16(); err != nil { // delivery_count
 					return out, err
 				}
+				if err := buf.SkipTagSection(); err != nil { // acquired_records tags
+					return out, err
+				}
 			}
-			if err := buf.SkipTagSection(); err != nil {
+			if err := buf.SkipTagSection(); err != nil { // partition tags
 				return out, err
 			}
 		}
+		if err := buf.SkipTagSection(); err != nil { // topic tags
+			return out, err
+		}
 	}
-	if err := buf.SkipTagSection(); err != nil {
+	// NodeEndpoints[] (node_id, host, port, rack) — leader discovery hints.
+	nEnd, err := buf.ReadUvarint()
+	if err != nil {
+		return out, err
+	}
+	for i := 1; i < int(nEnd); i++ {
+		if _, err := buf.ReadInt32(); err != nil { // node_id
+			return out, err
+		}
+		if _, err := buf.ReadCompactString(); err != nil { // host
+			return out, err
+		}
+		if _, err := buf.ReadInt32(); err != nil { // port
+			return out, err
+		}
+		if _, err := buf.ReadCompactNullableString(); err != nil { // rack
+			return out, err
+		}
+		if err := buf.SkipTagSection(); err != nil { // node_endpoint tags
+			return out, err
+		}
+	}
+	if err := buf.SkipTagSection(); err != nil { // response tags
 		return out, err
 	}
 	return out, nil

@@ -78,34 +78,84 @@ func (s *ShareConsumer) Poll(ctx context.Context) ([]Record, error) {
 		byBroker[a.leader] = append(byBroker[a.leader], a)
 	}
 
-	var out []Record
-	for broker, parts := range byBroker {
-		recs, err := s.fetchShare(ctx, broker, group, memberID, parts, maxPoll-len(out))
-		if err != nil {
-			if code, ok := protocol.APIErrorCode(err); ok {
-				switch code {
-				case 5, 6: // NOT_LEADER / LEADER_NOT_AVAILABLE
-					_ = s.client.cluster.Refresh(ctx, s.topics)
-					continue
-				case 122, 123: // SHARE_SESSION_NOT_FOUND / INVALID_SHARE_SESSION_EPOCH
-					s.resetShareSession(broker)
-					recs, err = s.fetchShare(ctx, broker, group, memberID, parts, maxPoll-len(out))
+	// The first ShareFetch against a partition only initializes broker-side
+	// share state and returns no records, so a single fetch round can come back
+	// empty even when data is available. Mirror KafkaShareConsumer.poll: keep
+	// running fetch rounds until records are acquired or the context ends.
+	for {
+		var out []Record
+		for broker, parts := range byBroker {
+			recs, err := s.fetchShare(ctx, broker, group, memberID, parts, maxPoll-len(out))
+			if err != nil {
+				if code, ok := protocol.APIErrorCode(err); ok {
+					switch code {
+					case 5, 6: // NOT_LEADER / LEADER_NOT_AVAILABLE
+						_ = s.client.cluster.Refresh(ctx, s.topics)
+						continue
+					case 122, 123: // SHARE_SESSION_NOT_FOUND / INVALID_SHARE_SESSION_EPOCH
+						s.resetShareSession(broker)
+						recs, err = s.fetchShare(ctx, broker, group, memberID, parts, maxPoll-len(out))
+					}
+				}
+				if err != nil {
+					return nil, err
 				}
 			}
-			if err != nil {
-				return nil, err
+			out = append(out, recs...)
+			if len(out) >= maxPoll {
+				return out[:maxPoll], nil
 			}
 		}
-		out = append(out, recs...)
-		if len(out) >= maxPoll {
-			return out[:maxPoll], nil
+		if len(out) > 0 {
+			return out, nil
+		}
+		// No records yet: stop if the caller's context is done (returning empty,
+		// like a poll timeout), otherwise run another fetch round.
+		select {
+		case <-ctx.Done():
+			return nil, nil
+		default:
 		}
 	}
-	return out, nil
+}
+
+// applyShareStartOffset honours WithConsumeFromBeginning for share groups by
+// setting the group-level share.auto.offset.reset config to "earliest" before
+// the share-partition start offset is initialized on the first fetch. Without
+// this the broker default ("latest") is used and records produced before the
+// consumer joins are never delivered. It must run before the first ShareFetch.
+func (s *ShareConsumer) applyShareStartOffset(ctx context.Context) error {
+	if !s.client.cfg.Consumer.ConsumeFromBeginning {
+		return nil
+	}
+	val := "earliest"
+	ver := s.client.cluster.NegotiatedVersion(protocol.APIIncrementalAlterConfigs, protocol.VerIncrementalAlterConfigs)
+	if ver < 0 {
+		ver = protocol.VerIncrementalAlterConfigs
+	}
+	body := protocol.EncodeIncrementalAlterConfigsRequest(ver, protocol.ConfigResourceGroup,
+		map[string][]protocol.ConfigAlteration{
+			s.group: {{Name: "share.auto.offset.reset", Value: &val}},
+		})
+	resp, err := s.client.cluster.RequestAny(ctx, protocol.APIIncrementalAlterConfigs, ver, body)
+	if err != nil {
+		return err
+	}
+	code, err := protocol.DecodeIncrementalAlterConfigsResponse(ver, resp)
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		return newKafkaError(code, "", 0, "set share.auto.offset.reset failed")
+	}
+	return nil
 }
 
 func (s *ShareConsumer) joinShareGroup(ctx context.Context) error {
 	if err := s.client.cluster.Refresh(ctx, s.topics); err != nil {
+		return err
+	}
+	if err := s.applyShareStartOffset(ctx); err != nil {
 		return err
 	}
 	coord, err := s.coordinator(ctx)

@@ -42,3 +42,6 @@ coverage.html
 # Local Kafka source/release archives (reference downloads, not part of the module)
 *.tar.gz
 *.tgz
+
+# Local Docker Compose overrides (machine-specific networking, etc.)
+docker-compose.override.yml
