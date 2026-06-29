@@ -129,11 +129,12 @@ func (p *Producer) ensureProducerID(ctx context.Context) error {
 }
 
 // coordinatorRetry returns a retry policy patient enough to wait out a
-// transaction/group coordinator that is still loading or being elected right
-// after broker startup (errors COORDINATOR_LOAD_IN_PROGRESS / NOT_COORDINATOR /
-// COORDINATOR_NOT_AVAILABLE). The default 3-attempt policy gives up in ~300ms,
-// which is too short for a freshly started cluster. The overall wait stays
-// bounded by the caller's context.
+// transaction/group coordinator or a partition leader that is still loading or
+// being elected right after broker startup or topic creation (errors
+// COORDINATOR_LOAD_IN_PROGRESS / NOT_COORDINATOR / COORDINATOR_NOT_AVAILABLE /
+// NOT_LEADER_OR_FOLLOWER / LEADER_NOT_AVAILABLE). The default 3-attempt policy
+// gives up in ~300ms, too short for a freshly started cluster. The overall wait
+// stays bounded by the caller's context.
 func coordinatorRetry(base RetryConfig) RetryConfig {
 	r := base
 	if r.MaxAttempts < 25 {
