@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.3] - 2026-06-29
+
+### Added
+
+- **Schema Registry lifecycle endpoints** — `Registry.IsCompatible` (compatibility check), `Compatibility` / `SetCompatibility` (get/set level), `ListSubjects`, `ListVersions`, `SchemaByVersion`, `DeleteSubject` / `DeleteSubjectVersion` (soft/hard), and a `SubjectForTopic` helper (TopicNameStrategy). The Schema Registry client now covers schema lifecycle management in addition to the produce/consume serde path. Integration-tested against the registry (register → compatibility check → evolve → list → delete).
+
 ## [0.25.2] - 2026-06-29
 
 ### Fixed

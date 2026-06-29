@@ -140,16 +140,15 @@ Schema-ID pinning / allow-list on decode is supported (`ExpectedSchemaID`,
 | `GET /schemas/ids/{id}` (fetch by id) | ✅ |
 | Content-Type `application/vnd.schemaregistry.v1+json` | ✅ |
 | Apicurio ccompat base path (`/apis/ccompat/v6\|v7`) | ✅ (configurable URL) |
-| `POST /compatibility/subjects/...` (compatibility check) | ❌ |
-| `GET/PUT /config[/{subject}]` (compatibility level) | ❌ |
-| `GET /subjects`, `GET /subjects/{s}/versions[/{v}]` | ❌ |
-| `POST /subjects/{subject}` (is-registered) | ❌ |
-| soft/hard delete, `/mode` | ❌ |
-| automatic `TopicNameStrategy` subject naming | ❌ (subject is explicit) |
+| `POST /compatibility/subjects/...` (compatibility check) | ✅ (`IsCompatible`) |
+| `GET/PUT /config[/{subject}]` (compatibility level) | ✅ (`Compatibility` / `SetCompatibility`) |
+| `GET /subjects`, `GET /subjects/{s}/versions[/{v}]` | ✅ (`ListSubjects` / `ListVersions` / `SchemaByVersion`) |
+| soft/hard delete | ✅ (`DeleteSubject` / `DeleteSubjectVersion`, `permanent` flag) |
+| `TopicNameStrategy` subject naming helper | ✅ (`SubjectForTopic`) |
+| `POST /subjects/{subject}` (is-registered) / `/mode` | ❌ (minor) |
 
-The Schema Registry client covers the **produce/consume serde path** (register +
-fetch-by-id + wire framing). Schema lifecycle management (compatibility, config,
-versions, deletes) is not yet exposed.
+The Schema Registry client covers the produce/consume serde path **and** schema
+lifecycle management (compatibility checks, config, version listing, deletes).
 
 ---
 
@@ -179,8 +178,8 @@ versions, deletes) is not yet exposed.
 1. **OffsetForLeaderEpoch (KIP-320)** — track leader epochs and detect truncation on unclean leader election.
 2. **KIP-890 transactions v2** — adopt Produce v10+ and the newer Add/EndTxn flow.
 3. **KIP-714 client metrics** — `GetTelemetrySubscriptions` / `PushTelemetry`.
-4. **Schema Registry lifecycle** — compatibility check, config/mode, version listing, deletes, `TopicNameStrategy`.
-5. **Newer API revisions** — Fetch v13+ (topic IDs), FindCoordinator v3+/batched, ShareAcknowledge v2 (`RENEW`), OffsetFetch v8+.
-6. **Consumer niceties** — duration-based `auto.offset.reset` (KIP-1106), server-side regex subscriptions (KIP-848 RE2J), configurable compression level (KIP-390).
+4. **Newer API revisions** — Fetch v13+ (topic IDs), FindCoordinator v3+/batched, ShareAcknowledge v2 (`RENEW`), OffsetFetch v8+.
+5. **Consumer niceties** — duration-based `auto.offset.reset` (KIP-1106), server-side regex subscriptions (KIP-848 RE2J), configurable compression level (KIP-390).
+6. **Schema Registry** — remaining minor endpoints (`/mode`, is-registered probe).
 
 _Generated from a verification pass against Apache Kafka 4.3 and Confluent Schema Registry docs._

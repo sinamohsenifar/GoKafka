@@ -113,6 +113,136 @@ func (r *Registry) SchemaByID(ctx context.Context, id int) (string, error) {
 	return resp.Schema, nil
 }
 
+// SubjectForTopic returns the default TopicNameStrategy subject for a topic:
+// "<topic>-value" (or "<topic>-key" when isKey is true).
+func SubjectForTopic(topic string, isKey bool) string {
+	if isKey {
+		return topic + "-key"
+	}
+	return topic + "-value"
+}
+
+// SubjectVersion is a registered schema version under a subject.
+type SubjectVersion struct {
+	Subject    string `json:"subject"`
+	ID         int    `json:"id"`
+	Version    int    `json:"version"`
+	Schema     string `json:"schema"`
+	SchemaType string `json:"schemaType,omitempty"`
+}
+
+// ListSubjects returns all registered subjects.
+func (r *Registry) ListSubjects(ctx context.Context) ([]string, error) {
+	var out []string
+	if err := r.get(ctx, "/subjects", &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ListVersions returns the version numbers registered under a subject.
+func (r *Registry) ListVersions(ctx context.Context, subject string) ([]int, error) {
+	var out []int
+	if err := r.get(ctx, "/subjects/"+escapeSubjectPath(subject)+"/versions", &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SchemaByVersion fetches a specific version under a subject. version may be a
+// number or "latest" (the default when empty).
+func (r *Registry) SchemaByVersion(ctx context.Context, subject, version string) (SubjectVersion, error) {
+	if version == "" {
+		version = "latest"
+	}
+	var out SubjectVersion
+	path := "/subjects/" + escapeSubjectPath(subject) + "/versions/" + url.PathEscape(version)
+	if err := r.get(ctx, path, &out); err != nil {
+		return SubjectVersion{}, err
+	}
+	return out, nil
+}
+
+// IsCompatible reports whether schema is compatible under the subject's
+// configured rule, checked against the given version ("latest" if empty).
+func (r *Registry) IsCompatible(ctx context.Context, subject, version, schemaType, schema string) (bool, error) {
+	if version == "" {
+		version = "latest"
+	}
+	body := map[string]any{"schema": schema}
+	if schemaType != "" {
+		body["schemaType"] = schemaType
+	}
+	var out struct {
+		IsCompatible bool `json:"is_compatible"`
+	}
+	path := "/compatibility/subjects/" + escapeSubjectPath(subject) + "/versions/" + url.PathEscape(version)
+	if err := r.post(ctx, path, body, &out); err != nil {
+		return false, err
+	}
+	return out.IsCompatible, nil
+}
+
+// Compatibility returns the effective compatibility level for a subject (pass
+// subject "" for the global level): BACKWARD, FORWARD, FULL, NONE, or a
+// _TRANSITIVE variant.
+func (r *Registry) Compatibility(ctx context.Context, subject string) (string, error) {
+	path := "/config"
+	if subject != "" {
+		path = "/config/" + escapeSubjectPath(subject) + "?defaultToGlobal=true"
+	}
+	var out struct {
+		CompatibilityLevel string `json:"compatibilityLevel"`
+		Compatibility      string `json:"compatibility"`
+	}
+	if err := r.get(ctx, path, &out); err != nil {
+		return "", err
+	}
+	if out.CompatibilityLevel != "" {
+		return out.CompatibilityLevel, nil
+	}
+	return out.Compatibility, nil
+}
+
+// SetCompatibility sets the compatibility level (pass subject "" for global).
+func (r *Registry) SetCompatibility(ctx context.Context, subject, level string) error {
+	path := "/config"
+	if subject != "" {
+		path = "/config/" + escapeSubjectPath(subject)
+	}
+	return r.put(ctx, path, map[string]any{"compatibility": level}, nil)
+}
+
+// DeleteSubjectVersion deletes one version (soft by default; permanent=true frees
+// it, only allowed after a soft delete). Returns the deleted version number.
+func (r *Registry) DeleteSubjectVersion(ctx context.Context, subject, version string, permanent bool) (int, error) {
+	if version == "" {
+		version = "latest"
+	}
+	path := "/subjects/" + escapeSubjectPath(subject) + "/versions/" + url.PathEscape(version)
+	if permanent {
+		path += "?permanent=true"
+	}
+	var out int
+	if err := r.del(ctx, path, &out); err != nil {
+		return 0, err
+	}
+	return out, nil
+}
+
+// DeleteSubject deletes a whole subject (soft by default). Returns deleted versions.
+func (r *Registry) DeleteSubject(ctx context.Context, subject string, permanent bool) ([]int, error) {
+	path := "/subjects/" + escapeSubjectPath(subject)
+	if permanent {
+		path += "?permanent=true"
+	}
+	var out []int
+	if err := r.del(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (r *Registry) post(ctx context.Context, path string, body any, out any) error {
 	b, err := json.Marshal(body)
 	if err != nil {
@@ -127,6 +257,26 @@ func (r *Registry) post(ctx context.Context, path string, body any, out any) err
 
 func (r *Registry) get(ctx context.Context, path string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.base+path, nil)
+	if err != nil {
+		return err
+	}
+	return r.do(req, out)
+}
+
+func (r *Registry) put(ctx context.Context, path string, body any, out any) error {
+	b, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, r.base+path, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	return r.do(req, out)
+}
+
+func (r *Registry) del(ctx context.Context, path string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, r.base+path, nil)
 	if err != nil {
 		return err
 	}
