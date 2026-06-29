@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.10] - 2026-06-29
+
+### Added
+
+- **Client/consumer lifecycle leak regression tests** (`integration_lifecycle_test.go`) — assert no goroutine/connection leak across 30 client connect/close cycles and 8 consumer join/leave cycles, and that `Close` is idempotent. Closes the cross-library audit's "test recommended" items #1 (Close deadlock) and #10 (connection/goroutine leak).
+
 ## [0.25.9] - 2026-06-29
 
 ### Added
