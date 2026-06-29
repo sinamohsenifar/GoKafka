@@ -34,9 +34,22 @@ type SerdeConfig struct {
 	AllowedSchemaIDs []int
 }
 
+// SchemaClient is the Schema Registry surface a Serde needs. *Registry implements
+// it against a live registry, and MockRegistry provides an in-memory
+// implementation for tests — so serde encode/decode round-trips can be unit
+// tested without a running Schema Registry (parity with confluent-kafka-go's
+// mock schema-registry client).
+type SchemaClient interface {
+	RegisterAvro(ctx context.Context, subject, schema string) (int, error)
+	RegisterJSON(ctx context.Context, subject, schema string) (int, error)
+	RegisterJSONSchema(ctx context.Context, subject, schema string) (int, error)
+	RegisterProtobuf(ctx context.Context, subject, schema string) (int, error)
+	SchemaByID(ctx context.Context, id int) (string, error)
+}
+
 // Serde encodes and decodes values with Confluent wire framing.
 type Serde struct {
-	reg    *Registry
+	reg    SchemaClient
 	cfg    SerdeConfig
 	mu     sync.RWMutex
 	avro   avro.Schema
@@ -44,8 +57,9 @@ type Serde struct {
 	id     int
 }
 
-// NewSerde creates a Serde for the given subject and format.
-func NewSerde(reg *Registry, cfg SerdeConfig) *Serde {
+// NewSerde creates a Serde for the given subject and format. reg may be a live
+// *Registry or a MockRegistry for tests.
+func NewSerde(reg SchemaClient, cfg SerdeConfig) *Serde {
 	if len(cfg.ProtobufMessageIndexes) == 0 {
 		cfg.ProtobufMessageIndexes = []int{0}
 	}

@@ -114,12 +114,48 @@ func (r *Registry) SchemaByID(ctx context.Context, id int) (string, error) {
 }
 
 // SubjectForTopic returns the default TopicNameStrategy subject for a topic:
-// "<topic>-value" (or "<topic>-key" when isKey is true).
+// "<topic>-value" (or "<topic>-key" when isKey is true). One schema per topic.
 func SubjectForTopic(topic string, isKey bool) string {
 	if isKey {
 		return topic + "-key"
 	}
 	return topic + "-value"
+}
+
+// SubjectForRecord returns the RecordNameStrategy subject: the fully-qualified
+// record name itself (e.g. "com.example.User"). This lets multiple event types
+// share a topic, with compatibility scoped per record type rather than per topic.
+// Matches Confluent's RecordNameStrategy (no -key/-value suffix; the record name
+// is the discriminator).
+func SubjectForRecord(recordName string) string {
+	return recordName
+}
+
+// SubjectForTopicRecord returns the TopicRecordNameStrategy subject:
+// "<topic>-<recordName>" (e.g. "orders-com.example.User"). Multiple event types
+// per topic, with compatibility scoped per topic-and-record. Matches Confluent's
+// TopicRecordNameStrategy.
+func SubjectForTopicRecord(topic, recordName string) string {
+	return topic + "-" + recordName
+}
+
+// SubjectNameStrategy derives the registry subject for a (topic, recordName,
+// isKey) tuple, so callers can plug TopicNameStrategy / RecordNameStrategy /
+// TopicRecordNameStrategy (or a custom rule). recordName is the schema's
+// fully-qualified name; it is ignored by TopicNameStrategy.
+type SubjectNameStrategy func(topic, recordName string, isKey bool) string
+
+// TopicNameStrategy is the default: "<topic>-key"/"<topic>-value".
+func TopicNameStrategy(topic, _ string, isKey bool) string { return SubjectForTopic(topic, isKey) }
+
+// RecordNameStrategy uses the fully-qualified record name as the subject.
+func RecordNameStrategy(_ string, recordName string, _ bool) string {
+	return SubjectForRecord(recordName)
+}
+
+// TopicRecordNameStrategy uses "<topic>-<recordName>" as the subject.
+func TopicRecordNameStrategy(topic, recordName string, _ bool) string {
+	return SubjectForTopicRecord(topic, recordName)
 }
 
 // SubjectVersion is a registered schema version under a subject.
