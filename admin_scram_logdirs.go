@@ -51,6 +51,50 @@ func (a *Admin) DeleteUserScramCredential(ctx context.Context, user string, mech
 	return a.alterUserScram(ctx, []protocol.ScramDeletion{del}, nil)
 }
 
+// UserScramCredential is one stored SCRAM credential (mechanism + iteration count).
+type UserScramCredential struct {
+	Mechanism  ScramMechanism
+	Iterations int
+}
+
+// UserScramCredentials describes the SCRAM credentials registered for a user.
+type UserScramCredentials struct {
+	User        string
+	Credentials []UserScramCredential
+}
+
+// DescribeUserScramCredentials returns the SCRAM credentials registered for the
+// given users (KIP-554, API 50). With no users it describes all users. The
+// salted passwords are never returned by the broker — only the mechanism and
+// iteration count per credential.
+func (a *Admin) DescribeUserScramCredentials(ctx context.Context, users ...string) ([]UserScramCredentials, error) {
+	body := protocol.EncodeDescribeUserScramCredentialsRequest(users)
+	resp, err := a.requestAny(ctx, protocol.APIDescribeUserScramCreds, protocol.VerDescribeUserScramCreds, body)
+	if err != nil {
+		return nil, err
+	}
+	topErr, topMsg, results, err := protocol.DecodeDescribeUserScramCredentialsResponse(resp)
+	if err != nil {
+		return nil, err
+	}
+	if topErr != 0 {
+		return nil, newKafkaError(topErr, "", 0, topMsg)
+	}
+	out := make([]UserScramCredentials, 0, len(results))
+	for _, r := range results {
+		if r.ErrorCode != 0 {
+			// RESOURCE_NOT_FOUND for a specific user — skip rather than fail the batch.
+			continue
+		}
+		creds := make([]UserScramCredential, 0, len(r.Credentials))
+		for _, c := range r.Credentials {
+			creds = append(creds, UserScramCredential{Mechanism: ScramMechanism(c.Mechanism), Iterations: int(c.Iterations)})
+		}
+		out = append(out, UserScramCredentials{User: r.User, Credentials: creds})
+	}
+	return out, nil
+}
+
 func (a *Admin) alterUserScram(ctx context.Context, dels []protocol.ScramDeletion, ups []protocol.ScramUpsertion) error {
 	body := protocol.EncodeAlterUserScramCredentialsRequest(dels, ups)
 	resp, err := a.requestAny(ctx, protocol.APIAlterUserScramCreds, protocol.VerAlterUserScramCreds, body)

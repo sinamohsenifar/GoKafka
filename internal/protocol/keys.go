@@ -29,6 +29,7 @@ const (
 	APIOffsetDelete            int16 = 47
 	APIDescribeClientQuotas    int16 = 48
 	APIAlterClientQuotas       int16 = 49
+	APIDescribeUserScramCreds  int16 = 50
 	APIAlterUserScramCreds     int16 = 51
 	APIDescribeTransactions    int16 = 65
 	APIListTransactions        int16 = 66
@@ -69,6 +70,7 @@ const (
 	VerElectLeaders            int16 = 2
 	VerDescribeClientQuotas    int16 = 1
 	VerAlterClientQuotas       int16 = 1
+	VerDescribeUserScramCreds  int16 = 0
 	VerAlterUserScramCreds     int16 = 0
 	VerDescribeTransactions    int16 = 0
 	VerListTransactions        int16 = 2
