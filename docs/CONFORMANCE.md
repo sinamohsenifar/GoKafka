@@ -67,7 +67,7 @@ the broker at connect time, so a lower client ceiling still interoperates.
 | 76 | ShareGroupHeartbeat (KIP-932) | 1 | 1 | ✅ |
 | 77 | ShareGroupDescribe (KIP-932) | 1 | 1 | ✅ |
 | 78 | ShareFetch (KIP-932) | 2 | 2 | ✅ |
-| 79 | ShareAcknowledge (KIP-932) | 1 | 2 | ➖ (v1; 4.2 added v2 `RENEW`) |
+| 79 | ShareAcknowledge (KIP-932) | 2 | 2 | ✅ (v2 `is_renew_ack` / Renew, KIP-1222; negotiated down to v1) |
 
 ### Client-facing APIs NOT implemented
 
@@ -94,7 +94,7 @@ internals), 88/89 Streams groups (KIP-1071).
 | KIP | Feature | Status |
 |-----|---------|:------:|
 | KIP-848 | Next-gen consumer group protocol (`group.protocol=consumer`) | ✅ |
-| KIP-932 | Share groups / queues (ShareConsumer) | ✅ (v1; `RENEW` ack from ShareAcknowledge v2 ❌) |
+| KIP-932 | Share groups / queues (ShareConsumer) | ✅ (Accept/Release/Reject; Renew via ShareAcknowledge v2, KIP-1222) |
 | KIP-98 / KIP-447 | Idempotent producer + transactions / EOS | ✅ (transaction protocol v1) |
 | KIP-345 | Static group membership (`group.instance.id`) | ✅ |
 | KIP-429 | Cooperative incremental rebalance | ✅ (cooperative-sticky) |
@@ -181,7 +181,7 @@ lifecycle management (compatibility checks, config, version listing, deletes).
 1. **OffsetForLeaderEpoch (KIP-320)** — leader-epoch *fencing* on Fetch is done; remaining: full *truncation detection* (query OffsetForLeaderEpoch API 23 on leader change) and committed-leader-epoch on offset commit/fetch.
 2. _(KIP-890 transactions v2 complete: implicit partition add on Produce v12 and EndTxn v5 epoch adoption with producer-id reuse across sequential transactions, all gated on `transaction.version >= 2`.)_
 3. **KIP-714 client metrics** — `GetTelemetrySubscriptions` / `PushTelemetry`.
-4. **Newer API revisions** — ShareAcknowledge v2 (`RENEW`, requires a Kafka 4.2+ broker — deferred until locally verifiable). (Fetch v13 topic-ids, OffsetFetch v8 multi-group, FindCoordinator flex v3, Produce v12, EndTxn v5 done.)
+4. _(Newer API revisions done: Fetch v13 topic-ids, OffsetFetch v8 multi-group, ShareAcknowledge v2 Renew, FindCoordinator flex v3, Produce v12, EndTxn v5.)_
 5. _(Consumer niceties closed: KIP-1106 `WithConsumeSince`, KIP-390 `WithProducerCompressionLevel`, KIP-848 RE2J `ConsumerPattern`.)_
 6. _(Schema Registry lifecycle complete: register/get, compatibility, config, versions, delete, `IsRegistered`, `Mode`/`SetMode`.)_
 

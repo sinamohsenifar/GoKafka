@@ -39,6 +39,7 @@ const (
 	ErrCodeOutOfOrderSequence           ErrorCode = 45
 	ErrCodeInvalidProducerEpoch         ErrorCode = 47
 	ErrCodeInvalidTxnState              ErrorCode = 48
+	ErrCodeUnsupportedVersion           ErrorCode = 35
 	ErrCodeConcurrentTransactions       ErrorCode = 51
 	ErrCodeTransactionAbortable         ErrorCode = 120
 	ErrCodeShareSessionNotFound         ErrorCode = 122

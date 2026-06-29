@@ -31,6 +31,8 @@ echo "Creating SCRAM credentials for user $USER..."
 echo "SCRAM users ready."
 
 if [ -x /opt/kafka/bin/kafka-features.sh ]; then
-  echo "Enabling share groups (share.version=1) when supported..."
-  /opt/kafka/bin/kafka-features.sh --bootstrap-server "$BOOTSTRAP" upgrade --feature share.version=1 || true
+  echo "Enabling share groups (prefer share.version=2 for KIP-1222 Renew, fall back to 1)..."
+  /opt/kafka/bin/kafka-features.sh --bootstrap-server "$BOOTSTRAP" upgrade --feature share.version=2 \
+    || /opt/kafka/bin/kafka-features.sh --bootstrap-server "$BOOTSTRAP" upgrade --feature share.version=1 \
+    || true
 fi

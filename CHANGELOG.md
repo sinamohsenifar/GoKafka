@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.19] - 2026-06-29
+
+### Added
+
+- **ShareAcknowledge v2 + Renew (KIP-1222).** `ShareConsumer.Renew` extends the acquisition lock on still-in-flight records during long processing. ShareAcknowledge is upgraded to v2, which adds the `is_renew_ack` flag; the acknowledge path encodes at the negotiated version, so brokers below v2 transparently keep v1. Also rounds out the share-group acknowledge API with `ShareConsumer.Release` and `ShareConsumer.Reject` (alongside the existing `Acknowledge`).
+- `ErrCodeUnsupportedVersion` (35) named error constant.
+
+### Fixed
+
+- The ShareAcknowledge v2 encoder initially placed `is_renew_ack` after the topics array; per the Apache Kafka schema it precedes topics (right after `share_session_epoch`). Corrected and verified end-to-end against a Kafka 4.3 broker (a round-trip unit test cannot catch a wrong field *order* — only the broker can — so the unit test now asserts the absolute position).
+
 ## [0.25.18] - 2026-06-29
 
 ### Added
