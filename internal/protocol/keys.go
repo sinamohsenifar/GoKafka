@@ -82,5 +82,5 @@ const (
 	VerShareGroupHeartbeat     int16 = 1
 	VerShareGroupDescribe      int16 = 1
 	VerShareFetch              int16 = 2
-	VerShareAcknowledge        int16 = 1
+	VerShareAcknowledge        int16 = 2 // v2 adds is_renew_ack (KIP-1222); negotiated down to v1 on older brokers
 )

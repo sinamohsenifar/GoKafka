@@ -317,6 +317,32 @@ func (s *ShareConsumer) fetchShare(ctx context.Context, broker int32, group, mem
 
 // Acknowledge accepts delivery of processed records (ShareAckAccept).
 func (s *ShareConsumer) Acknowledge(ctx context.Context, records ...Record) error {
+	return s.acknowledge(ctx, protocol.ShareAckAccept, records)
+}
+
+// Release returns records to the share group so another consumer may deliver
+// them again (ShareAckRelease).
+func (s *ShareConsumer) Release(ctx context.Context, records ...Record) error {
+	return s.acknowledge(ctx, protocol.ShareAckRelease, records)
+}
+
+// Reject permanently rejects records (e.g. unprocessable / poison messages) so
+// they are not redelivered (ShareAckReject).
+func (s *ShareConsumer) Reject(ctx context.Context, records ...Record) error {
+	return s.acknowledge(ctx, protocol.ShareAckReject, records)
+}
+
+// Renew extends the acquisition lock on still-in-flight records (ShareAckRenew,
+// KIP-1222) so long processing does not lose the lock. Requires a broker that
+// supports ShareAcknowledge v2 (Kafka 4.3+); otherwise it returns an error.
+func (s *ShareConsumer) Renew(ctx context.Context, records ...Record) error {
+	if v := s.client.cluster.NegotiatedVersion(protocol.APIShareAcknowledge, protocol.VerShareAcknowledge); v < 2 {
+		return fmt.Errorf("gokafka: share Renew requires ShareAcknowledge v2 (broker negotiated v%d)", v)
+	}
+	return s.acknowledge(ctx, protocol.ShareAckRenew, records)
+}
+
+func (s *ShareConsumer) acknowledge(ctx context.Context, ackType protocol.ShareAckType, records []Record) error {
 	if len(records) == 0 {
 		return nil
 	}
@@ -338,19 +364,20 @@ func (s *ShareConsumer) Acknowledge(ctx context.Context, records ...Record) erro
 		byBroker[leader.NodeID] = append(byBroker[leader.NodeID], protocol.ShareFetchPartition{
 			TopicID: id, Partition: r.Partition,
 			AckBatches: []protocol.ShareAckBatch{{
-				FirstOffset: r.Offset, LastOffset: r.Offset, Type: protocol.ShareAckAccept,
+				FirstOffset: r.Offset, LastOffset: r.Offset, Type: ackType,
 			}},
 		})
 	}
 
+	ver := s.client.cluster.NegotiatedVersion(protocol.APIShareAcknowledge, protocol.VerShareAcknowledge)
 	for broker, parts := range byBroker {
 		s.mu.Lock()
 		epoch := s.shareSession[broker]
 		s.mu.Unlock()
-		body := protocol.EncodeShareAcknowledgeRequest(protocol.ShareAcknowledgeRequest{
+		body := protocol.EncodeShareAcknowledgeRequest(ver, protocol.ShareAcknowledgeRequest{
 			GroupID: group, MemberID: memberID, ShareSessionEpoch: epoch, Partitions: parts,
 		})
-		rb, err := s.client.cluster.Request(ctx, broker, protocol.APIShareAcknowledge, protocol.VerShareAcknowledge, body)
+		rb, err := s.client.cluster.Request(ctx, broker, protocol.APIShareAcknowledge, ver, body)
 		if err != nil {
 			return err
 		}
