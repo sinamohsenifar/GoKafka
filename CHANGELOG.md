@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.16] - 2026-06-29
+
+### Added
+
+- **KIP-890 EndTxn v5 epoch adoption + transaction reuse.** `EndTxn` is upgraded to v5, which returns the server-bumped producer id and epoch. Under TV2 the transactional producer adopts them and caches them on the `Producer`, so the next `BeginTransaction` reuses the producer id/epoch **without a fresh `InitProducerID` round-trip** — across sequential transactions the producer id stays constant while the epoch increases. New `TransactionalProducer.ProducerID()` exposes the current id/epoch (useful for diagnostics and verified by the reuse test). The cache is dropped on any uncertain EndTxn outcome so the next transaction re-initializes safely.
+
+### Fixed
+
+- **EndTxn flexible (v3+) encoder inverted the `committed` byte** (wrote 0 for commit / 1 for abort). The bug was dormant while `EndTxn` used the legacy v2 path; bumping to v5 surfaced it. Now writes `committed` correctly, with a unit regression test. (Same dormant-flex-codec class as the earlier OffsetFetch fix.)
+
+### Changed
+
+- `EndTxn` is now encoded and decoded at the exact negotiated version (v5 where supported, down to the broker's max otherwise) rather than a fixed version, so the response is parsed against the correct schema.
+
 ## [0.25.15] - 2026-06-29
 
 ### Added
