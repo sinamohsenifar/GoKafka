@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.26] - 2026-06-29
+
+### Added
+
+- **`Admin.DescribeUserScramCredentials`** (KIP-554, API 50) — reads the SCRAM credentials (mechanism + iteration count) registered for one or more users, completing the SCRAM admin surface alongside the existing `UpsertUserScramCredential` / `DeleteUserScramCredential`. GoKafka now implements 41 client-facing API keys.
+
 ## [0.25.25] - 2026-06-29
 
 ### Fixed

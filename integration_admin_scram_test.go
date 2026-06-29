@@ -35,6 +35,26 @@ func TestIntegrationAlterUserScramCredentials(t *testing.T) {
 		_ = admin.DeleteUserScramCredential(context.Background(), user, gokafka.ScramSHA256)
 	})
 
+	// DescribeUserScramCredentials should report the credential we just upserted.
+	descs, err := admin.DescribeUserScramCredentials(ctx, user)
+	if err != nil {
+		t.Fatalf("describe scram credentials: %v", err)
+	}
+	var described bool
+	for _, d := range descs {
+		if d.User != user {
+			continue
+		}
+		for _, c := range d.Credentials {
+			if c.Mechanism == gokafka.ScramSHA256 && c.Iterations == 4096 {
+				described = true
+			}
+		}
+	}
+	if !described {
+		t.Fatalf("upserted SCRAM credential not found in describe: %+v", descs)
+	}
+
 	// Verify the credential works by authenticating with it on the SASL listener.
 	saslBrokers := integrationBrokerEnv(t, "KAFKA_BROKERS_SASL_PLAINTEXT", "127.0.0.1:9094")
 	authCfg, err := gokafka.NewConfig([]string{saslBrokers}, gokafka.WithSecurity(gokafka.SecurityConfig{

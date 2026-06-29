@@ -55,6 +55,8 @@ func ClientVersion(apiKey int16) int16 {
 		return VerAlterClientQuotas
 	case APIAlterUserScramCreds:
 		return VerAlterUserScramCreds
+	case APIDescribeUserScramCreds:
+		return VerDescribeUserScramCreds
 	case APIDescribeTransactions:
 		return VerDescribeTransactions
 	case APIListTransactions:

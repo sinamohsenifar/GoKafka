@@ -30,6 +30,96 @@ type ScramResult struct {
 	ErrorMessage string
 }
 
+// ScramCredentialInfo describes one stored SCRAM credential for a user.
+type ScramCredentialInfo struct {
+	Mechanism  int8
+	Iterations int32
+}
+
+// ScramDescription is the per-user result of DescribeUserScramCredentials.
+type ScramDescription struct {
+	User         string
+	ErrorCode    int16
+	ErrorMessage string
+	Credentials  []ScramCredentialInfo
+}
+
+// EncodeDescribeUserScramCredentialsRequest encodes API 50 (flexible v0). An
+// empty users slice requests all users.
+func EncodeDescribeUserScramCredentialsRequest(users []string) []byte {
+	buf := wire.NewBuffer(32)
+	if len(users) == 0 {
+		buf.WriteUvarint(0) // null users array -> all users
+	} else {
+		buf.WriteCompactArrayLen(len(users))
+		for _, u := range users {
+			buf.WriteCompactString(u)
+			buf.WriteEmptyTagSection()
+		}
+	}
+	buf.WriteEmptyTagSection()
+	return buf.Bytes()
+}
+
+// DecodeDescribeUserScramCredentialsResponse decodes API 50 response (flexible
+// v0), returning the top-level error and per-user credential descriptions.
+func DecodeDescribeUserScramCredentialsResponse(body []byte) (int16, string, []ScramDescription, error) {
+	buf := wire.FromBytes(body)
+	if _, err := buf.ReadInt32(); err != nil { // throttle_time_ms
+		return 0, "", nil, err
+	}
+	topErr, err := buf.ReadInt16() // top-level error_code
+	if err != nil {
+		return 0, "", nil, err
+	}
+	topMsg, err := buf.ReadCompactNullableString() // top-level error_message
+	if err != nil {
+		return topErr, "", nil, err
+	}
+	n, err := buf.ReadUvarint()
+	if err != nil {
+		return topErr, topMsg, nil, err
+	}
+	out := make([]ScramDescription, 0, safePrealloc(int(n)-1))
+	for i := 1; i < int(n); i++ {
+		var d ScramDescription
+		if d.User, err = buf.ReadCompactString(); err != nil {
+			return topErr, topMsg, nil, err
+		}
+		if d.ErrorCode, err = buf.ReadInt16(); err != nil {
+			return topErr, topMsg, nil, err
+		}
+		if d.ErrorMessage, err = buf.ReadCompactNullableString(); err != nil {
+			return topErr, topMsg, nil, err
+		}
+		nc, err := buf.ReadUvarint()
+		if err != nil {
+			return topErr, topMsg, nil, err
+		}
+		for j := 1; j < int(nc); j++ {
+			var ci ScramCredentialInfo
+			if ci.Mechanism, err = buf.ReadInt8(); err != nil {
+				return topErr, topMsg, nil, err
+			}
+			if ci.Iterations, err = buf.ReadInt32(); err != nil {
+				return topErr, topMsg, nil, err
+			}
+			if err := buf.SkipTagSection(); err != nil {
+				return topErr, topMsg, nil, err
+			}
+			d.Credentials = append(d.Credentials, ci)
+		}
+		if err := buf.SkipTagSection(); err != nil {
+			return topErr, topMsg, nil, err
+		}
+		out = append(out, d)
+	}
+	if err := buf.SkipTagSection(); err != nil {
+		return topErr, topMsg, nil, err
+	}
+	return topErr, topMsg, out, nil
+}
+
 // EncodeAlterUserScramCredentialsRequest encodes API 51 (always flexible, v0).
 func EncodeAlterUserScramCredentialsRequest(deletions []ScramDeletion, upsertions []ScramUpsertion) []byte {
 	buf := wire.NewBuffer(64)
