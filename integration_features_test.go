@@ -114,3 +114,29 @@ func TestIntegrationBatchProduce(t *testing.T) {
 		t.Fatalf("results=%d", len(results))
 	}
 }
+
+// TestIntegrationBrokerFeatures verifies finalized cluster features are parsed
+// from the ApiVersions response. metadata.version is always finalized on a KRaft
+// cluster; transaction.version drives KIP-890 TV2 negotiation.
+func TestIntegrationBrokerFeatures(t *testing.T) {
+	cfg, err := gokafka.NewConfig(integrationBrokers(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli, err := gokafka.NewClient(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cli.Close()
+
+	mv, ok := cli.BrokerFeature("metadata.version")
+	if !ok || mv <= 0 {
+		t.Fatalf("metadata.version not captured (level=%d ok=%v) — feature parsing broken", mv, ok)
+	}
+	t.Logf("metadata.version finalized level = %d", mv)
+	if tv, ok := cli.BrokerFeature("transaction.version"); ok {
+		t.Logf("transaction.version finalized level = %d (TV2 available = %v)", tv, tv >= 2)
+	} else {
+		t.Logf("transaction.version not advertised by this broker")
+	}
+}

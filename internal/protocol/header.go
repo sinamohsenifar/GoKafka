@@ -78,7 +78,7 @@ func ResponseBodyForAPI(raw []byte, apiKey, apiVersion int16) ([]byte, error) {
 	if _, err := buf.ReadInt32(); err != nil { // correlation_id
 		return nil, err
 	}
-	if flexibleRequestHeader(apiKey, apiVersion) {
+	if flexibleResponseHeader(apiKey, apiVersion) {
 		if err := buf.SkipTagSection(); err != nil {
 			return nil, err
 		}

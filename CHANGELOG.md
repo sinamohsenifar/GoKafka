@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.13] - 2026-06-29
+
+### Added
+
+- **Cluster feature negotiation (KIP-584 / KIP-890 foundation).** ApiVersions upgraded to flexible **v3** (from v2), enabling the broker to advertise cluster-finalized feature levels in the response tag section. These are now parsed and exposed via `Client.BrokerFeature(name)` — e.g. `BrokerFeature("transaction.version")` returns `2` on a KIP-890 **TV2**-capable cluster (Kafka 4.x), and `BrokerFeature("metadata.version")` returns the finalized MetadataVersion. This is the prerequisite for negotiating the transactions-v2 produce path; capture is read-only and changes no existing transaction behavior.
+
+### Changed
+
+- ApiVersions request now uses the flexible v3 wire format (compact strings + tagged fields). The ApiVersions **response** header remains non-flexible per KIP-511 (the client must parse it before it knows broker capabilities); a dedicated `flexibleResponseHeader` helper encodes this exception so the rest of the flexible-header machinery is unaffected. v3 is supported by all Kafka 3.4+ targets and is exercised on every connection bootstrap.
+
 ## [0.25.12] - 2026-06-29
 
 ### Changed

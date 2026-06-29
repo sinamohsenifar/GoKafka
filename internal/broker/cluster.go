@@ -69,6 +69,19 @@ type Cluster struct {
 	conns            map[int32]*transport.Conn
 	seedConn         *transport.Conn
 	apiVersions      map[int16]int16
+	features         map[string]int16 // finalized feature -> max level (e.g. transaction.version)
+}
+
+// Feature returns the cluster-finalized max level of a named feature (from
+// ApiVersions finalized features) and whether it was advertised.
+func (c *Cluster) Feature(name string) (int16, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.features == nil {
+		return 0, false
+	}
+	v, ok := c.features[name]
+	return v, ok
 }
 
 func New(seeds []string, clientID string, sec auth.Config, opts Options) *Cluster {
@@ -431,12 +444,21 @@ func (c *Cluster) NegotiateVersions(ctx context.Context, softwareVersion string)
 	if err != nil {
 		return err
 	}
-	versions, code, err := protocol.DecodeApiVersionsResponse(protocol.VerApiVersions, resp)
+	versions, feats, code, err := protocol.DecodeApiVersionsResponse(protocol.VerApiVersions, resp)
 	if err != nil {
 		return err
 	}
 	if code != 0 {
 		return fmt.Errorf("broker: api versions: error %d", code)
+	}
+	if len(feats) > 0 {
+		fm := make(map[string]int16, len(feats))
+		for _, f := range feats {
+			fm[f.Name] = f.MaxLevel
+		}
+		c.mu.Lock()
+		c.features = fm
+		c.mu.Unlock()
 	}
 	negotiated := map[int16]int16{}
 	for _, v := range versions {
