@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.5] - 2026-06-29
+
+### Added
+
+- **[docs/PERFORMANCE.md](docs/PERFORMANCE.md)** — performance & best-practices guide: microbenchmark results (e.g. a 1000-record batch encodes in ~0.55 ms with ~29 allocations), producer/consumer tuning tables (throughput / latency / durability / ordering), connection & robustness notes, observability overhead, and an anti-patterns list.
+
 ## [0.25.4] - 2026-06-29
 
 ### Added
