@@ -2,7 +2,9 @@ package gokafka
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"sync"
 
 	"github.com/sinamohsenifar/gokafka/internal/broker"
@@ -67,6 +69,7 @@ func NewClient(cfg Config) (*Client, error) {
 		hub.Log(ctx, observe.LevelWarn, "api version negotiation failed, using defaults", observe.Error(err))
 	}
 	if err := c.cluster.Refresh(ctx, nil); err != nil {
+		err = tlsMismatchHint(err, c.cfg.Security.TLSEnabled())
 		span.RecordError(err)
 		span.SetStatus(observe.StatusError, err.Error())
 		span.End()
@@ -77,6 +80,21 @@ func NewClient(cfg Config) (*Client, error) {
 	span.End()
 	hub.Log(ctx, observe.LevelInfo, "client connected", observe.String("client.id", cfg.ClientID))
 	return c, nil
+}
+
+// tlsMismatchHint augments a bootstrap failure with a TLS hint. Connecting in
+// plaintext to a TLS-only listener makes the broker close the connection during
+// the first request, surfacing as an opaque EOF — a common, hard-to-diagnose
+// misconfiguration (documented by kafka-go). When no TLS is configured and the
+// failure is an EOF, point the user at WithSecurity.
+func tlsMismatchHint(err error, tlsEnabled bool) error {
+	if err == nil || tlsEnabled {
+		return err
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return fmt.Errorf("%w — the broker closed the connection during the initial handshake; it may require TLS (configure WithSecurity with TLS)", err)
+	}
+	return err
 }
 
 // Close releases broker connections.
