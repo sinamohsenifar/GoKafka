@@ -55,6 +55,9 @@ Several mature Kafka clients exist for Go. They differ mainly in dependencies, d
 | **GSSAPI (SPNEGO pass-through)** | Yes | Yes | No | Yes | Yes |
 | **Kerberos (GSSAPI)** | SPNEGO pass-through | Yes | No | Yes | Yes |
 | **Schema Registry client** | Yes (REST + wire) | Via plugins | No | No | Via schema registry client |
+| **Cross-client partitioners (murmur2 + CRC32)** | Yes | Yes | Yes | murmur2 | Yes |
+| **Consumer-group lag helper** | Yes | Yes (kadm) | Manual | Manual | Manual |
+| **In-memory test mocks** | Schema Registry | Yes (kfake) | No | Yes (mocks) | Yes (mock client) |
 
 **When GoKafka fits well**
 
@@ -424,11 +427,16 @@ Register bridges to forward metrics into existing Prometheus or OpenTelemetry pi
 
 ## Examples
 
+Each directory under [`examples/`](examples) is a self-contained runnable program.
+
 ```bash
 export KAFKA_BROKERS=localhost:9092
-go run ./examples/produce
-go run ./examples/consume
-go run ./examples/admin
+go run ./examples/produce        # produce a record
+go run ./examples/consume        # consumer group
+go run ./examples/admin          # topic / cluster admin
+go run ./examples/transactions   # exactly-once (EOS) produce + commit
+go run ./examples/sharegroup     # KIP-932 share group (queue semantics)
+go run ./examples/schemaregistry # Avro serde — runs with no broker (in-memory registry)
 ```
 
 ---
