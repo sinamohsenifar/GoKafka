@@ -50,7 +50,7 @@ const (
 	VerListOffsets             int16 = 3
 	VerOffsetCommit            int16 = 8
 	VerOffsetFetch             int16 = 5
-	VerFindCoordinator         int16 = 1
+	VerFindCoordinator         int16 = 3 // flexible (KIP-482 tagged fields); v3+ on all Kafka 3.4+ targets
 	VerJoinGroup               int16 = 6
 	VerSyncGroup               int16 = 5
 	VerHeartbeat               int16 = 4

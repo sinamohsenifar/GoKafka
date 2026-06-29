@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.11] - 2026-06-29
+
+### Changed
+
+- **FindCoordinator upgraded to flexible v3** (KIP-482 tagged fields) from the legacy v1; the flex encode/decode path already existed and is exercised by every group/transaction/share-group coordinator lookup. v3+ is supported by all Kafka 3.4+ targets.
+
 ### Maintenance
 
 - **CI: harden Kafka broker startup** — the Integration and Compatibility workflows now retry broker startup up to 3 times (recreating the container) instead of failing the run on the first transient startup flake on shared runners. No library change.
