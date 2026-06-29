@@ -302,6 +302,9 @@ func (s *ShareConsumer) fetchShare(ctx context.Context, broker int32, group, mem
 
 	var out []Record
 	for _, fr := range resp.Records {
+		if fr.Control { // skip transaction control markers
+			continue
+		}
 		out = append(out, Record{
 			Topic: fr.Topic, Partition: fr.Partition, Offset: fr.Offset,
 			Key: fr.Key, Value: fr.Value, Headers: fetchHeaders(fr.Headers),

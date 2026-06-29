@@ -182,6 +182,17 @@ func TestIntegrationTransactionSendOffsets(t *testing.T) {
 	}
 	time.Sleep(300 * time.Millisecond)
 
+	// The first consumer has finished its work (consume + SendOffsetsToTxn) but
+	// is still subscribed to inTopic only. Leave the group before the verify
+	// consumer joins with a superset subscription, otherwise the two members
+	// have heterogeneous subscriptions and the rebalance must converge through
+	// the idle member — slow and flaky. The committed offset persists in the
+	// coordinator regardless of membership.
+	if err := consumer.Leave(ctx); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+
 	verifyCfg, err := gokafka.NewConfig(integrationBrokers(t),
 		gokafka.WithConsumerGroup(group),
 		gokafka.WithConsumeFromBeginning(true),

@@ -36,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Share consumer config write** — the broker-negotiated heartbeat interval is stored on the `ShareConsumer` (mutex-guarded) instead of mutating the shared client `Config`.
 - **Context-aware backoff** — `commitOffsets` rebalance/rejoin retries use a cancellable wait instead of `time.Sleep`, so a cancelled context returns promptly.
 
+### Fixed (consumer correctness)
+
+- **Absolute record offsets** — `parseRecords` now uses the record batch's `baseOffset` to compute each record's absolute offset. Previously offsets were batch-relative (starting from 0), which was masked only when a batch began at partition offset 0 (fresh-topic tests). Any consumer resuming from a committed offset > 0, or reading a topic with prior data, received wrong offsets.
+- **Transaction control markers** — control batches (commit/abort markers) are detected via the batch-header `isControl` bit instead of a misread per-record attribute, and are no longer delivered to the application as garbage records. The consumer/share-consumer still advance past them so read_committed consumers never get stuck re-fetching a marker.
+- **Group leader assignment metadata** — when a consumer is the group leader it refreshes metadata for the union of all members' subscribed topics before assigning, so a topic that only another member subscribes to is no longer dropped (zero partitions) from the computed assignment.
+
 ### Security / robustness
 
 - **Bounded decode preallocation** — slice preallocations driven by an untrusted wire array count are capped (`safePrealloc`); a corrupt/hostile frame advertising a huge element count can no longer trigger a multi-gigabyte allocation before the element-by-element decode loop runs. Applied across `ApiVersions`, `Metadata`, admin, ACL, and group decoders.

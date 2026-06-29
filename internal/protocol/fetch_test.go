@@ -1,9 +1,33 @@
 package protocol
 
 import (
+	"encoding/binary"
 	"strings"
 	"testing"
 )
+
+// v2RecordBatchHeader writes the fixed 61-byte RecordBatch header into batch.
+func v2RecordBatchHeader(batch []byte, baseOffset int64, attributes int16, lastOffsetDelta int32) {
+	binary.BigEndian.PutUint64(batch[0:8], uint64(baseOffset))
+	batch[16] = 2 // magic
+	binary.BigEndian.PutUint16(batch[21:23], uint16(attributes))
+	binary.BigEndian.PutUint32(batch[23:27], uint32(lastOffsetDelta))
+}
+
+// A control batch (isControl bit 0x20) must not be parsed as data; it yields a
+// single Control marker carrying the batch's absolute last offset so the
+// consumer can advance past it.
+func TestDecodeOneRecordBatchControlMarker(t *testing.T) {
+	batch := make([]byte, 80)
+	v2RecordBatchHeader(batch, 41, 0x20, 0)
+	recs, err := decodeOneRecordBatch("t", 3, batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 1 || !recs[0].Control || recs[0].Offset != 41 {
+		t.Fatalf("expected one control marker at offset 41, got %+v", recs)
+	}
+}
 
 // A v0/v1 message set (magic 0 or 1) must be rejected, not silently misparsed
 // as a v2 RecordBatch.

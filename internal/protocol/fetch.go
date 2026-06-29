@@ -23,6 +23,10 @@ type FetchedRecord struct {
 	Value     []byte
 	Headers   [][2][]byte
 	Timestamp int64
+	// Control marks a transaction commit/abort marker. Such records carry only
+	// an offset (so the consumer can advance past them) and must not be
+	// delivered to the application.
+	Control bool
 }
 
 func EncodeFetchRequest(ver int16, _ string, partitions []FetchPartition, maxWaitMs int32, minBytes, maxBytes int32, isolationLevel int8) []byte {
@@ -363,7 +367,8 @@ func decodeOneRecordBatch(topic string, part int32, batch []byte) ([]FetchedReco
 		return nil, nil
 	}
 	buf := wire.FromBytes(batch)
-	if _, err := buf.ReadInt64(); err != nil { // baseOffset
+	baseOffset, err := buf.ReadInt64() // baseOffset
+	if err != nil {
 		return nil, err
 	}
 	if _, err := buf.ReadInt32(); err != nil { // batchLength
@@ -389,8 +394,19 @@ func decodeOneRecordBatch(topic string, part int32, batch []byte) ([]FetchedReco
 	if err != nil {
 		return nil, err
 	}
-	if _, err := buf.ReadInt32(); err != nil { // lastOffsetDelta
+	lastOffsetDelta, err := buf.ReadInt32() // lastOffsetDelta
+	if err != nil {
 		return nil, err
+	}
+	if attributes&0x20 != 0 {
+		// Control batch (transaction commit/abort marker). Don't parse its
+		// records; emit a single control marker carrying the batch's last offset
+		// so the consumer advances past it without delivering anything.
+		return []FetchedRecord{{
+			Topic: topic, Partition: part,
+			Offset:  baseOffset + int64(lastOffsetDelta),
+			Control: true,
+		}}, nil
 	}
 	firstTimestamp, err := buf.ReadInt64()
 	if err != nil {
@@ -420,13 +436,12 @@ func decodeOneRecordBatch(topic string, part int32, batch []byte) ([]FetchedReco
 			return nil, err
 		}
 	}
-	return parseRecords(topic, part, recordsBytes, firstTimestamp)
+	return parseRecords(topic, part, recordsBytes, baseOffset, firstTimestamp)
 }
 
-func parseRecords(topic string, part int32, data []byte, baseTimestamp int64) ([]FetchedRecord, error) {
+func parseRecords(topic string, part int32, data []byte, baseOffset, baseTimestamp int64) ([]FetchedRecord, error) {
 	buf := wire.FromBytes(data)
 	var out []FetchedRecord
-	var baseOffset int64
 	for len(buf.Remaining()) > 0 {
 		length, err := buf.ReadVarint()
 		if err != nil {
@@ -439,13 +454,8 @@ func parseRecords(topic string, part int32, data []byte, baseTimestamp int64) ([
 		if recordEnd > len(buf.B) {
 			break
 		}
-		attrs, err := buf.ReadInt8()
-		if err != nil {
+		if _, err := buf.ReadInt8(); err != nil { // per-record attributes (unused)
 			return nil, err
-		}
-		if attrs&0x03 == 3 { // control record (commit/abort marker)
-			buf.I = recordEnd
-			continue
 		}
 		tsDelta, err := buf.ReadVarint()
 		if err != nil {
@@ -522,12 +532,8 @@ func parseRecords(topic string, part int32, data []byte, baseTimestamp int64) ([
 		if buf.I != recordEnd {
 			buf.I = recordEnd
 		}
-		offset := baseOffset + int64(offsetDelta)
-		if len(out) == 0 {
-			baseOffset = offset
-		}
 		out = append(out, FetchedRecord{
-			Topic: topic, Partition: part, Offset: offset,
+			Topic: topic, Partition: part, Offset: baseOffset + int64(offsetDelta),
 			Key: key, Value: val, Headers: hdrs, Timestamp: baseTimestamp + int64(tsDelta),
 		})
 	}

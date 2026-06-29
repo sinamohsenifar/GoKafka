@@ -157,12 +157,17 @@ func (c *Consumer) fetchFromBroker(
 	}
 	var out []Record
 	for _, fr := range fetched {
+		// Always advance past the record (including transaction control markers)
+		// so read_committed consumers don't get stuck re-fetching a marker.
+		c.bumpOffset(fr.Topic, fr.Partition, fr.Offset+1)
+		if fr.Control {
+			continue
+		}
 		out = append(out, Record{
 			Topic: fr.Topic, Partition: fr.Partition, Offset: fr.Offset,
 			Key: fr.Key, Value: fr.Value, Headers: fetchHeaders(fr.Headers),
 			Timestamp: time.UnixMilli(fr.Timestamp),
 		})
-		c.bumpOffset(fr.Topic, fr.Partition, fr.Offset+1)
 		c.client.observe.Metrics.OnConsume(len(fr.Value), nil)
 		if maxRecords > 0 && len(out) >= maxRecords {
 			break
@@ -355,6 +360,24 @@ joinLoop:
 				members = append(members, protocol.MemberSubscription{MemberID: mid, Topics: topics})
 			}
 			if len(members) > 0 {
+				// The leader assigns partitions for every topic ANY member
+				// subscribes to, so its metadata must cover the union of all
+				// members' subscriptions — not just this member's own topics.
+				// Otherwise topics only other members subscribe to resolve to
+				// zero partitions and are silently dropped from the assignment.
+				topicSet := map[string]struct{}{}
+				for _, m := range members {
+					for _, t := range m.Topics {
+						topicSet[t] = struct{}{}
+					}
+				}
+				allTopics := make([]string, 0, len(topicSet))
+				for t := range topicSet {
+					allTopics = append(allTopics, t)
+				}
+				if err := c.client.cluster.Refresh(ctx, allTopics); err != nil {
+					return err
+				}
 				meta := c.client.cluster.Metadata()
 				topicParts := map[string][]int32{}
 				for _, t := range meta.Topics {
