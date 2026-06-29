@@ -46,32 +46,42 @@ func (c *Consumer) seekByTimestamp(ctx context.Context, topic string, ts int64, 
 	for i, p := range partitions {
 		req[i] = protocol.ListOffsetsPartition{Topic: topic, Partition: p, Timestamp: ts}
 	}
-	leader, err := c.client.cluster.LeaderBroker(topic, partitions[0])
-	if err != nil {
-		return err
-	}
 	isolation := int8(0)
 	if c.client.cfg.Consumer.IsolationLevel == IsolationReadCommitted {
 		isolation = 1
 	}
 	body := protocol.EncodeListOffsetsRequest(req, isolation)
-	rb, err := c.client.cluster.Request(ctx, leader.NodeID, protocol.APIListOffsets, protocol.VerListOffsets, body)
-	if err != nil {
-		return err
-	}
-	offs, err := protocol.DecodeListOffsetsResponse(rb)
-	if err != nil {
-		return err
-	}
-	for _, o := range offs {
-		if o.ErrorCode != 0 {
-			return newKafkaError(o.ErrorCode, o.Topic, o.Partition, "list offsets failed")
+	// A just-created topic's partition leader may not be elected/propagated yet,
+	// yielding NOT_LEADER_OR_FOLLOWER / LEADER_NOT_AVAILABLE. Retry patiently with
+	// a metadata refresh until the leader is ready (bounded by ctx).
+	return retryRetriable(ctx, coordinatorRetry(c.client.cfg.Retry), func() error {
+		leader, err := c.client.cluster.LeaderBroker(topic, partitions[0])
+		if err != nil {
+			_ = c.client.cluster.Refresh(ctx, []string{topic})
+			return newKafkaError(int16(ErrCodeNotLeaderForPart), topic, partitions[0], "list offsets: leader unavailable")
 		}
-		if err := c.Seek(o.Topic, o.Partition, o.Offset); err != nil {
+		rb, err := c.client.cluster.Request(ctx, leader.NodeID, protocol.APIListOffsets, protocol.VerListOffsets, body)
+		if err != nil {
 			return err
 		}
-	}
-	return nil
+		offs, err := protocol.DecodeListOffsetsResponse(rb)
+		if err != nil {
+			return err
+		}
+		for _, o := range offs {
+			if o.ErrorCode != 0 {
+				ke := newKafkaError(o.ErrorCode, o.Topic, o.Partition, "list offsets failed")
+				if IsRetriable(ke) {
+					_ = c.client.cluster.Refresh(ctx, []string{topic})
+				}
+				return ke
+			}
+			if err := c.Seek(o.Topic, o.Partition, o.Offset); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // AssignedPartitions returns the current group assignment.
