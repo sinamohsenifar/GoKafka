@@ -1,25 +1,30 @@
 package produce
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/sinamohsenifar/gokafka/internal/protocol"
 )
 
+// seqKey identifies a partition without allocating a string per lookup.
+type seqKey struct {
+	topic string
+	part  int32
+}
+
 // State tracks idempotent producer sequence numbers per partition.
 type State struct {
 	mu        sync.Mutex
 	pid       protocol.ProducerID
-	sequences map[string]int32
+	sequences map[seqKey]int32
 }
 
 func NewState(pid protocol.ProducerID) *State {
-	return &State{pid: pid, sequences: map[string]int32{}}
+	return &State{pid: pid, sequences: map[seqKey]int32{}}
 }
 
-func topicKey(topic string, part int32) string {
-	return fmt.Sprintf("%s:%d", topic, part)
+func topicKey(topic string, part int32) seqKey {
+	return seqKey{topic: topic, part: part}
 }
 
 // ReserveSequence returns the next sequence to send without advancing (safe for retries).
@@ -71,5 +76,5 @@ func (s *State) NextSequence(topic string, part int32) int32 {
 func (s *State) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sequences = map[string]int32{}
+	s.sequences = map[seqKey]int32{}
 }

@@ -33,10 +33,7 @@ func (b *Buffer) ReadUUID() (UUID, error) {
 	return u, nil
 }
 
-// WriteUUID writes a UUID as two big-endian int64 values.
+// WriteUUID writes a UUID as 16 raw big-endian bytes.
 func (b *Buffer) WriteUUID(u UUID) {
-	var tmp [16]byte
-	copy(tmp[:], u[:])
-	b.WriteInt64(int64(binary.BigEndian.Uint64(tmp[0:8])))
-	b.WriteInt64(int64(binary.BigEndian.Uint64(tmp[8:16])))
+	b.B = append(b.B, u[:]...)
 }

@@ -55,6 +55,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Raised default version ceilings: `SyncGroup` 3→5, `Heartbeat` 1→4, `LeaveGroup` 2→5.
 - `docker-compose.yml`: set `share.coordinator.state.topic` replication factor / min-ISR to 1 for single-broker KIP-932 dev.
 
+### Performance
+
+- Added a benchmark suite (produce encode single/batch, wire primitives) — the module previously had none, so allocation regressions were invisible.
+- Idempotent producer sequence state keys its map by a `{topic, partition}` struct instead of an `fmt.Sprintf` string, removing a per-record allocation on the idempotent send path.
+- `wire.WriteUUID` appends the 16 raw bytes directly instead of re-encoding via two `int64` conversions.
+
 ### Maintenance
 
 - CI now enforces `gofmt`, `go vet`, and `staticcheck` as a blocking gate; the whole tree is `gofmt`-clean and `staticcheck`-clean.
