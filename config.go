@@ -17,15 +17,15 @@ type Config struct {
 	ConsumerGroup string
 	ShareGroup    string // KIP-932 share group id (mutually exclusive with ConsumerGroup per client use)
 
-	Connection     ConnectionConfig
-	Security       auth.Config
-	Metrics        metrics.Config
-	Observability  observabilitySettings
-	Producer       ProducerConfig
-	Consumer       ConsumerConfig
-	Transaction    TransactionConfig
-	Concurrency    ConcurrencyConfig
-	Retry          RetryConfig
+	Connection    ConnectionConfig
+	Security      auth.Config
+	Metrics       metrics.Config
+	Observability observabilitySettings
+	Producer      ProducerConfig
+	Consumer      ConsumerConfig
+	Transaction   TransactionConfig
+	Concurrency   ConcurrencyConfig
+	Retry         RetryConfig
 }
 
 type observabilitySettings struct {
@@ -47,11 +47,11 @@ const (
 // DefaultConfig returns defaults for a new client.
 func DefaultConfig(brokers []string) Config {
 	return Config{
-		Brokers:     brokers,
-		ClientID:    "gokafka",
-		Connection:  defaultConnection(),
-		Security:    auth.Config{Protocol: auth.SecurityPlaintext},
-		Metrics:     metrics.Config{Namespace: "gokafka", Enabled: true},
+		Brokers:    brokers,
+		ClientID:   "gokafka",
+		Connection: defaultConnection(),
+		Security:   auth.Config{Protocol: auth.SecurityPlaintext},
+		Metrics:    metrics.Config{Namespace: "gokafka", Enabled: true},
 		Observability: observabilitySettings{
 			Config: observe.Config{
 				ServiceName: "gokafka",
@@ -106,13 +106,6 @@ func (c Config) compressionByte() int8 {
 	default:
 		return compress.CodecNone
 	}
-}
-
-func (c Config) requestTimeout() time.Duration {
-	if c.Connection.RequestTimeout > 0 {
-		return c.Connection.RequestTimeout
-	}
-	return 30 * time.Second
 }
 
 func (c Config) transactionalID() string {

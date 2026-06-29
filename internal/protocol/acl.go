@@ -20,9 +20,9 @@ const (
 type ResourceType int8
 
 const (
-	ResourceTopic      ResourceType = 2
-	ResourceGroup      ResourceType = 3
-	ResourceCluster    ResourceType = 4
+	ResourceTopic           ResourceType = 2
+	ResourceGroup           ResourceType = 3
+	ResourceCluster         ResourceType = 4
 	ResourceTransactionalID ResourceType = 5
 )
 

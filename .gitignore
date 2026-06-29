@@ -26,6 +26,7 @@ docker/secrets/*.jks
 docker/secrets/*.p12
 docker/secrets/*.pem
 docker/secrets/*.key
+docker/secrets/*.crt
 docker/secrets/*.csr
 docker/secrets/*.ext
 docker/secrets/ca.srl

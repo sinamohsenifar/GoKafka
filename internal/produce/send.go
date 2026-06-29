@@ -2,7 +2,6 @@ package produce
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/sinamohsenifar/gokafka/internal/broker"
@@ -75,7 +74,3 @@ type RecordInput struct {
 }
 
 var ErrUnknownTopic = protocol.ErrUnknownTopic
-
-func topicKeyPublic(topic string, part int32) string {
-	return fmt.Sprintf("%s:%d", topic, part)
-}

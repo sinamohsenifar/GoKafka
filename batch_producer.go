@@ -75,4 +75,3 @@ func (b *BatchProducer) flushLocked(ctx context.Context) error {
 func (b *BatchProducer) Close(ctx context.Context) error {
 	return b.Flush(ctx)
 }
-

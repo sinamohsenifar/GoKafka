@@ -16,14 +16,14 @@ import (
 
 // Options configures cluster networking behavior.
 type Options struct {
-	DialTimeout       time.Duration
-	RequestTimeout    time.Duration
-	MetadataTTL       time.Duration
-	MaxResponseBytes  int
-	HostRemap         map[string]string
-	AddressMapper     func(nodeID int32, host string, port int32) string
+	DialTimeout        time.Duration
+	RequestTimeout     time.Duration
+	MetadataTTL        time.Duration
+	MaxResponseBytes   int
+	HostRemap          map[string]string
+	AddressMapper      func(nodeID int32, host string, port int32) string
 	AllowedBrokerHosts []string
-	Observe           *observe.Hub
+	Observe            *observe.Hub
 }
 
 func (o Options) resolveAddress(nodeID int32, host string, port int32) string {
@@ -66,8 +66,8 @@ type Cluster struct {
 	leaderIndex     map[string]map[int32]int32 // topic -> partition -> broker node id
 	metaRefreshedAt time.Time
 	conns           map[int32]*transport.Conn
-	seedConn    *transport.Conn
-	apiVersions map[int16]int16
+	seedConn        *transport.Conn
+	apiVersions     map[int16]int16
 }
 
 func New(seeds []string, clientID string, sec auth.Config, opts Options) *Cluster {

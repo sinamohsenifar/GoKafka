@@ -14,15 +14,15 @@ type ShareGroupMemberDescription struct {
 
 // ShareGroupDescription is detailed share group metadata (API 77 v1).
 type ShareGroupDescription struct {
-	ErrorCode         int16
-	ErrorMessage      string
-	GroupID           string
-	GroupState        string
-	GroupEpoch        int32
-	AssignmentEpoch   int32
-	AssignorName      string
-	Members           []ShareGroupMemberDescription
-	AuthorizedOps     int32
+	ErrorCode       int16
+	ErrorMessage    string
+	GroupID         string
+	GroupState      string
+	GroupEpoch      int32
+	AssignmentEpoch int32
+	AssignorName    string
+	Members         []ShareGroupMemberDescription
+	AuthorizedOps   int32
 }
 
 // EncodeShareGroupDescribeRequest encodes API 77 flex v1.

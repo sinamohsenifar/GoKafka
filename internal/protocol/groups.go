@@ -28,22 +28,6 @@ func encodeConsumerSubscriptionLegacy(topics []string, cooperative bool) []byte 
 	return buf.Bytes()
 }
 
-func encodeConsumerSubscriptionFlex(topics []string, cooperative bool) []byte {
-	buf := wire.NewBuffer(64)
-	if cooperative {
-		buf.WriteInt16(3) // cooperative-sticky subscription version
-	} else {
-		buf.WriteInt16(0)
-	}
-	buf.WriteCompactArrayLen(len(topics))
-	for _, t := range topics {
-		buf.WriteCompactString(t)
-	}
-	buf.WriteCompactBytes(nil)
-	buf.WriteEmptyTagSection()
-	return buf.Bytes()
-}
-
 func strPtr(s string) *string {
 	if s == "" {
 		return nil

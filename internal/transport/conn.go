@@ -18,15 +18,15 @@ import (
 
 // Conn is a Kafka broker connection with optional SASL/TLS.
 type Conn struct {
-	mu                sync.Mutex
-	addr              string
-	netConn           net.Conn
-	reader            *bufio.Reader
-	clientID          string
-	correlationID     int32
-	security          auth.Config
-	requestTimeout    time.Duration
-	maxResponseBytes  int
+	mu               sync.Mutex
+	addr             string
+	netConn          net.Conn
+	reader           *bufio.Reader
+	clientID         string
+	correlationID    int32
+	security         auth.Config
+	requestTimeout   time.Duration
+	maxResponseBytes int
 }
 
 func Dial(ctx context.Context, addr, clientID string, sec auth.Config, dialTimeout, requestTimeout time.Duration, maxResponseBytes int) (*Conn, error) {

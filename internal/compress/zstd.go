@@ -5,9 +5,6 @@ import (
 	"github.com/sinamohsenifar/gokafka/internal/limits"
 )
 
-// ZSTD magic skippable frame prefix (0xFD2FB528 little-endian at frame start).
-const zstdMagic = zstd.Magic
-
 // IsZstdFrame reports whether data begins with a ZSTD frame magic.
 func IsZstdFrame(data []byte) bool {
 	return zstd.IsFrame(data)

@@ -11,7 +11,9 @@ func TestHashPartitioner(t *testing.T) {
 	if got := p.Partition([]byte("key"), 3); got < 0 || got >= 3 {
 		t.Fatalf("partition out of range: %d", got)
 	}
-	if p.Partition([]byte("key"), 3) != p.Partition([]byte("key"), 3) {
+	first := p.Partition([]byte("key"), 3)
+	second := p.Partition([]byte("key"), 3)
+	if first != second {
 		t.Fatal("expected stable hash partition")
 	}
 }

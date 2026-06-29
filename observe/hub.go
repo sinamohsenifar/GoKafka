@@ -3,6 +3,7 @@ package observe
 import (
 	"context"
 )
+
 // Hub bundles logging, metrics, and tracing for the Kafka client.
 type Hub struct {
 	Logger  Logger

@@ -33,10 +33,10 @@ func (NoopTracer) Start(ctx context.Context, _ string, _ ...Attr) (context.Conte
 
 type noopSpan struct{}
 
-func (noopSpan) End()                                    {}
-func (noopSpan) SetStatus(StatusCode, string)            {}
-func (noopSpan) RecordError(error)                         {}
-func (noopSpan) SetAttributes(...Attr)                   {}
+func (noopSpan) End()                         {}
+func (noopSpan) SetStatus(StatusCode, string) {}
+func (noopSpan) RecordError(error)            {}
+func (noopSpan) SetAttributes(...Attr)        {}
 
 // RecordingSpan captures span data for tests and debug tracers.
 type RecordingSpan struct {

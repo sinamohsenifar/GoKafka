@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Raised default version ceilings: `SyncGroup` 3→5, `Heartbeat` 1→4, `LeaveGroup` 2→5.
 - `docker-compose.yml`: set `share.coordinator.state.topic` replication factor / min-ISR to 1 for single-broker KIP-932 dev.
 
+### Maintenance
+
+- CI now enforces `gofmt`, `go vet`, and `staticcheck` as a blocking gate; the whole tree is `gofmt`-clean and `staticcheck`-clean.
+- Removed dead code (unused helpers/consts) and fixed a no-op assertion in the partitioner test.
+- Generated integration TLS material (`docker/secrets/*.crt`) is no longer tracked; CI and `scripts/gen-test-certs.sh` regenerate it.
+
 ## [0.24.1] - 2026-06-24
 
 ### Fixed

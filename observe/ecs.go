@@ -41,12 +41,12 @@ func encodeECS(ctx context.Context, cfg LoggerConfig, level Level, msg string, a
 	entry := baseLogEntry(ctx, cfg, level, msg, attrs)
 	// ECS field names
 	ecs := map[string]any{
-		"@timestamp":   entry["timestamp"],
-		"message":      entry["message"],
-		"log.level":    entry["level"],
-		"service.name": cfg.ServiceName,
+		"@timestamp":      entry["timestamp"],
+		"message":         entry["message"],
+		"log.level":       entry["level"],
+		"service.name":    cfg.ServiceName,
 		"service.version": cfg.Version,
-		"labels":       entry["labels"],
+		"labels":          entry["labels"],
 	}
 	if tc := TraceFromContext(ctx); tc.TraceID != "" {
 		ecs["trace.id"] = tc.TraceID

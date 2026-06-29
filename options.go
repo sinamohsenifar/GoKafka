@@ -190,7 +190,7 @@ type GroupProtocol int
 
 const (
 	GroupProtocolClassic GroupProtocol = iota
-	GroupProtocolNextGen                 // KIP-848 ConsumerGroupHeartbeat
+	GroupProtocolNextGen               // KIP-848 ConsumerGroupHeartbeat
 )
 
 // ConsumerConfig controls group consumption.
@@ -232,10 +232,10 @@ func (a PartitionAssignor) protocolName() string {
 
 // TransactionConfig configures Kafka transactions (EOS).
 type TransactionConfig struct {
-	Enabled           bool
-	TransactionalID   string
-	Timeout           time.Duration
-	IsolationLevel    IsolationLevel
+	Enabled         bool
+	TransactionalID string
+	Timeout         time.Duration
+	IsolationLevel  IsolationLevel
 }
 
 // IsolationLevel for consumers reading transactional topics.

@@ -35,9 +35,9 @@ type ProduceSettings struct {
 	Compression     int8
 	Transactional   bool
 	TransactionalID string // required in produce request body when Transactional is true (v3+)
-	ProducerID        int64
-	ProducerEpoch     int16
-	NextSequence      func(topic string, partition int32) int32
+	ProducerID      int64
+	ProducerEpoch   int16
+	NextSequence    func(topic string, partition int32) int32
 }
 
 func DefaultProduceSettings() ProduceSettings {
@@ -166,7 +166,7 @@ func encodeRecordBatch(records []ProduceRecord, settings ProduceSettings, baseSe
 	batch.WriteInt64(0) // baseOffset
 	batch.WriteInt32(0) // batchLength placeholder
 	batch.WriteInt32(-1)
-	batch.WriteInt8(2) // magic
+	batch.WriteInt8(2)  // magic
 	batch.WriteInt32(0) // crc placeholder
 	batch.WriteInt16(attributes)
 	batch.WriteInt32(lastOffsetDelta)
