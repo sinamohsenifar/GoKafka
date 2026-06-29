@@ -16,6 +16,18 @@ func safePrealloc(n int) int {
 	return n
 }
 
+// flexibleResponseHeader reports whether the response header carries a tagged-
+// fields section. It mirrors flexibleRequestHeader except for ApiVersions, whose
+// response header is always v0 (non-flexible) even when the request and body are
+// flexible (KIP-511) — the client must parse it before it knows what the broker
+// supports.
+func flexibleResponseHeader(apiKey, apiVersion int16) bool {
+	if apiKey == APIApiVersions {
+		return false
+	}
+	return flexibleRequestHeader(apiKey, apiVersion)
+}
+
 func flexibleRequestHeader(apiKey, apiVersion int16) bool {
 	switch apiKey {
 	case APIMetadata:

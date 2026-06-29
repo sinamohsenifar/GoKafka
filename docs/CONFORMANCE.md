@@ -35,7 +35,7 @@ the broker at connect time, so a lower client ceiling still interoperates.
 | 15 | DescribeGroups | 5 | 6 | ➖ |
 | 16 | ListGroups | 2 | 5 | ➖ |
 | 17 | SaslHandshake | 1 | 1 | ✅ |
-| 18 | ApiVersions | 2 | 4 | ➖ |
+| 18 | ApiVersions | 3 | 4 | ✅ (flexible v3; parses cluster-finalized features) |
 | 19 | CreateTopics | 4 | 7 | ➖ |
 | 20 | DeleteTopics | 6 | 6 | ✅ |
 | 21 | DeleteRecords | 2 | 2 | ✅ |
@@ -101,7 +101,8 @@ internals), 88/89 Streams groups (KIP-1071).
 | KIP-896 | Drop pre-2.1 request versions; message format v0/v1 removed | ✅ (only v2 record batches; magic≠2 rejected) |
 | KIP-98 read_committed | Skip aborted-transaction records | ✅ (filters by aborted-txn list) |
 | SCRAM/OAUTHBEARER/GSSAPI | SASL mechanisms | ✅ (GSSAPI = SPNEGO pass-through) |
-| KIP-890 | Transactions v2 (Produce v10+, server-side verify) | ❌ (uses txn v1; interoperates with 4.x brokers) |
+| KIP-584 | Feature versioning (cluster-finalized feature levels via ApiVersions) | ➖ (parsed and exposed via `Client.BrokerFeature`; not yet used to gate behavior beyond txn-version detection) |
+| KIP-890 | Transactions v2 (Produce v10+, server-side verify) | ➖ (txn v1 produce path; `transaction.version` is now detected via `BrokerFeature` — TV2 negotiation is the next step; interoperates with 4.x brokers) |
 | KIP-714 | Client metrics push (telemetry RPCs) | ❌ |
 | KIP-899 / KIP-1102 | Rebootstrap from `bootstrap.servers` / on server signal | ➖ (refresh fails over across configured seeds; no full rebootstrap-on-signal) |
 | KIP-1106 | Duration-based `auto.offset.reset` | ❌ (earliest/latest only) |

@@ -19,7 +19,7 @@ func (c *Client) ApiVersions(ctx context.Context) ([]ApiVersion, error) {
 	if err != nil {
 		return nil, err
 	}
-	versions, code, err := protocol.DecodeApiVersionsResponse(protocol.VerApiVersions, rb)
+	versions, _, code, err := protocol.DecodeApiVersionsResponse(protocol.VerApiVersions, rb)
 	if err != nil {
 		return nil, err
 	}
@@ -27,6 +27,13 @@ func (c *Client) ApiVersions(ctx context.Context) ([]ApiVersion, error) {
 		return nil, newKafkaError(code, "", 0, "api versions failed")
 	}
 	return versions, nil
+}
+
+// BrokerFeature returns the cluster-finalized level of a feature (e.g.
+// "transaction.version", "metadata.version") from ApiVersions, and whether it
+// was advertised. A "transaction.version" level of 2 indicates KIP-890 TV2.
+func (c *Client) BrokerFeature(name string) (int16, bool) {
+	return c.cluster.Feature(name)
 }
 
 // NegotiatedAPIVersion returns the version negotiated at connect for an API key.

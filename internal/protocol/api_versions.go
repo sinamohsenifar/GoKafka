@@ -25,11 +25,21 @@ func EncodeApiVersionsRequest(softwareName, softwareVersion string) []byte {
 }
 
 // DecodeApiVersionsResponse parses broker API version ranges.
-func DecodeApiVersionsResponse(version int16, body []byte) ([]ApiVersion, int16, error) {
+// FinalizedFeature is a cluster-finalized feature level from ApiVersions
+// (e.g. transaction.version, metadata.version), used for feature negotiation
+// such as KIP-890 TV2.
+type FinalizedFeature struct {
+	Name     string
+	MinLevel int16
+	MaxLevel int16
+}
+
+func DecodeApiVersionsResponse(version int16, body []byte) ([]ApiVersion, []FinalizedFeature, int16, error) {
 	if version >= 3 {
 		return decodeApiVersionsResponseFlex(body)
 	}
-	return decodeApiVersionsResponseLegacy(version, body)
+	v, code, err := decodeApiVersionsResponseLegacy(version, body)
+	return v, nil, code, err
 }
 
 func decodeApiVersionsResponseLegacy(version int16, body []byte) ([]ApiVersion, int16, error) {
@@ -66,42 +76,94 @@ func decodeApiVersionsResponseLegacy(version int16, body []byte) ([]ApiVersion, 
 	return out, errCode, nil
 }
 
-func decodeApiVersionsResponseFlex(body []byte) ([]ApiVersion, int16, error) {
+func decodeApiVersionsResponseFlex(body []byte) ([]ApiVersion, []FinalizedFeature, int16, error) {
 	buf := wire.FromBytes(body)
 	errCode, err := buf.ReadInt16()
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 	n, err := buf.ReadUvarint()
 	if err != nil {
-		return nil, errCode, err
+		return nil, nil, errCode, err
 	}
 	out := make([]ApiVersion, 0, safePrealloc(int(n)-1))
 	for i := 1; i < int(n); i++ {
 		key, err := buf.ReadInt16()
 		if err != nil {
-			return nil, errCode, err
+			return nil, nil, errCode, err
 		}
 		min, err := buf.ReadInt16()
 		if err != nil {
-			return nil, errCode, err
+			return nil, nil, errCode, err
 		}
 		max, err := buf.ReadInt16()
 		if err != nil {
-			return nil, errCode, err
+			return nil, nil, errCode, err
 		}
 		out = append(out, ApiVersion{APIKey: key, MinVersion: min, MaxVersion: max})
 		if err := buf.SkipTagSection(); err != nil {
-			return nil, errCode, err
+			return nil, nil, errCode, err
 		}
 	}
 	if _, err := buf.ReadInt32(); err != nil { // throttle_time_ms
-		return nil, errCode, err
+		return nil, nil, errCode, err
 	}
-	if err := buf.SkipTagSection(); err != nil {
-		return nil, errCode, err
+	feats, err := readApiVersionsFinalizedFeatures(buf)
+	if err != nil {
+		return nil, nil, errCode, err
 	}
-	return out, errCode, nil
+	return out, feats, errCode, nil
+}
+
+// readApiVersionsFinalizedFeatures parses the response-level tag section and
+// extracts FinalizedFeatures (tag 2): each is {Name, MaxVersionLevel int16,
+// MinVersionLevel int16, tags}. Unknown tags are skipped by length.
+func readApiVersionsFinalizedFeatures(buf *wire.Buffer) ([]FinalizedFeature, error) {
+	n, err := buf.ReadUvarint()
+	if err != nil || n == 0 {
+		return nil, err
+	}
+	var feats []FinalizedFeature
+	for i := uint(0); i < n; i++ {
+		tag, err := buf.ReadUvarint()
+		if err != nil {
+			return nil, err
+		}
+		size, err := buf.ReadUvarint()
+		if err != nil {
+			return nil, err
+		}
+		end := buf.I + int(size)
+		if size > uint(len(buf.B)) || end > len(buf.B) {
+			return nil, wire.ErrShortBuffer
+		}
+		if tag == 2 { // FinalizedFeatures
+			m, err := buf.ReadUvarint()
+			if err != nil {
+				return nil, err
+			}
+			for j := 1; j < int(m); j++ {
+				name, err := buf.ReadCompactString()
+				if err != nil {
+					return nil, err
+				}
+				maxL, err := buf.ReadInt16()
+				if err != nil {
+					return nil, err
+				}
+				minL, err := buf.ReadInt16()
+				if err != nil {
+					return nil, err
+				}
+				if err := buf.SkipTagSection(); err != nil {
+					return nil, err
+				}
+				feats = append(feats, FinalizedFeature{Name: name, MinLevel: minL, MaxLevel: maxL})
+			}
+		}
+		buf.I = end // advance past this tagged field regardless
+	}
+	return feats, nil
 }
 
 // NegotiateVersion picks the highest mutually supported version.

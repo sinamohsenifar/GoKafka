@@ -73,7 +73,7 @@ const (
 	VerDeleteGroups            int16 = 2
 	VerIncrementalAlterConfigs int16 = 0
 	VerOffsetDelete            int16 = 0
-	VerApiVersions             int16 = 2
+	VerApiVersions             int16 = 3
 	VerSaslHandshake           int16 = 1
 	VerSaslAuthenticate        int16 = 1
 	VerConsumerGroupHeartbeat  int16 = 1
