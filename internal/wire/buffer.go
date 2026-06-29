@@ -141,6 +141,28 @@ func (b *Buffer) ReadCompactNullableString() (string, error) {
 	return s, nil
 }
 
+// ReadCompactNullableStringPtr reads a compact nullable string, distinguishing
+// null (isNull=true) from an empty string.
+func (b *Buffer) ReadCompactNullableStringPtr() (s string, isNull bool, err error) {
+	n, err := b.ReadUvarint()
+	if err != nil {
+		return "", false, err
+	}
+	if n == 0 {
+		return "", true, nil
+	}
+	size := int(n) - 1
+	if size == 0 {
+		return "", false, nil
+	}
+	if b.I+size > len(b.B) {
+		return "", false, ErrShortBuffer
+	}
+	s = string(b.B[b.I : b.I+size])
+	b.I += size
+	return s, false, nil
+}
+
 func (b *Buffer) ReadCompactBytes() ([]byte, error) {
 	n, err := b.ReadUvarint()
 	if err != nil {
@@ -190,17 +212,22 @@ func (b *Buffer) ReadVarint() (int, error) {
 
 func (b *Buffer) SkipTagSection() error {
 	n, err := b.ReadUvarint()
-	if err != nil {
+	if err != nil || n == 0 {
 		return err
 	}
-	if n == 0 {
-		return nil
+	for i := uint(0); i < n; i++ {
+		if _, err := b.ReadUvarint(); err != nil { // tag
+			return err
+		}
+		size, err := b.ReadUvarint()
+		if err != nil {
+			return err
+		}
+		if b.I+int(size) > len(b.B) {
+			return ErrShortBuffer
+		}
+		b.I += int(size)
 	}
-	skip := int(n) - 1
-	if b.I+skip > len(b.B) {
-		return ErrShortBuffer
-	}
-	b.I += skip
 	return nil
 }
 
@@ -223,6 +250,23 @@ func (b *Buffer) WriteInt32(v int32) {
 func (b *Buffer) WriteInt64(v int64) {
 	var tmp [8]byte
 	binary.BigEndian.PutUint64(tmp[:], uint64(v))
+	b.B = append(b.B, tmp[:]...)
+}
+
+// ReadFloat64 reads an IEEE-754 big-endian float64 (Kafka float64 type).
+func (b *Buffer) ReadFloat64() (float64, error) {
+	if b.I+8 > len(b.B) {
+		return 0, ErrShortBuffer
+	}
+	v := math.Float64frombits(binary.BigEndian.Uint64(b.B[b.I:]))
+	b.I += 8
+	return v, nil
+}
+
+// WriteFloat64 writes an IEEE-754 big-endian float64.
+func (b *Buffer) WriteFloat64(v float64) {
+	var tmp [8]byte
+	binary.BigEndian.PutUint64(tmp[:], math.Float64bits(v))
 	b.B = append(b.B, tmp[:]...)
 }
 

@@ -26,6 +26,7 @@ docker/secrets/*.jks
 docker/secrets/*.p12
 docker/secrets/*.pem
 docker/secrets/*.key
+docker/secrets/*.crt
 docker/secrets/*.csr
 docker/secrets/*.ext
 docker/secrets/ca.srl
@@ -38,3 +39,10 @@ docker/secrets/*_creds
 # Coverage
 coverage.out
 coverage.html
+
+# Local Kafka source/release archives (reference downloads, not part of the module)
+*.tar.gz
+*.tgz
+
+# Local Docker Compose overrides (machine-specific networking, etc.)
+docker-compose.override.yml

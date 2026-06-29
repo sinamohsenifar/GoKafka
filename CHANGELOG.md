@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-06-29
+
+### Fixed
+
+- **Negotiated API versions threaded through the protocol layer** — `Fetch`, `JoinGroup`, `SyncGroup`, `Heartbeat`, `LeaveGroup`, `ConsumerGroupHeartbeat`, `AlterConfigs`, and `DeleteTopics` now encode/decode against the version negotiated with the broker at connect time instead of hardcoded `Ver*` ceilings. Prevents silent wire corruption when a broker negotiates a lower version than the client default.
+- **Fetch flex response decode** — read `last_stable_offset`, `log_start_offset`, aborted-transactions, `preferred_read_replica`, and per-topic/per-partition tag sections that were previously skipped, fixing record loss and parse errors on Fetch v12+.
+- **Fetch flex request** — emit `last_fetched_epoch` (v12+) and `log_start_offset` (v5+) conditionally, correct `session_epoch` (-1), and append `forgotten_topics_data` / `rack_id` / tag sections.
+- **AlterConfigs flex response** — corrected field order (`error_code`, `error_message`, `resource_type`, `resource_name`); previously misread the response and could report the wrong error code.
+- **JoinGroup flex request** — `protocol_type` is a non-nullable compact string (was encoded as nullable), which some brokers rejected.
+- **Metadata v10+ flex request** — encode topic `topic_id` as a UUID and `name` as a compact nullable string.
+- **Static group membership** — `group.instance.id` is now sent on `JoinGroup`, `SyncGroup`, `Heartbeat`, and `LeaveGroup`, enabling KIP-345 static membership.
+- **KIP-848 / KIP-932 heartbeat decode** — read the nullable `Assignment` struct via its presence byte and skip trailing tag sections in `ConsumerGroupHeartbeat` and `ShareGroupHeartbeat` responses.
+- **KIP-848 join** — send an empty (non-null) topic-partition list on first join (`memberEpoch == 0`) as the broker requires.
+- **KIP-932 share consumer (end-to-end)** — `ShareConsumer.Poll`/`Acknowledge` now work against a live broker. Several bugs fixed together:
+  - Member ids are generated as Kafka `Uuid` strings (URL-safe base64, 22 chars); the previous hyphenated RFC-4122 form made the broker reject `ShareFetch` with `UNKNOWN_SERVER_ERROR` (`Uuid.fromString`: "too long to be decoded as a base64 UUID").
+  - `ShareFetch` response decode reads the `CurrentLeader` struct tags, per-`AcquiredRecords` tags, per-topic tags, and the trailing `NodeEndpoints` array (previously overran the buffer once records were present).
+  - `ShareAcknowledge` request encode emits the missing per-`AcknowledgementBatch` and per-`AcknowledgeTopic` tag sections (broker previously rejected it with `BufferUnderflowException`).
+  - `Poll` runs fetch rounds until records arrive or the context ends — the first `ShareFetch` only initializes broker-side share state and returns empty.
+  - `WithConsumeFromBeginning(true)` now sets the group config `share.auto.offset.reset=earliest` before the first fetch, so records produced before the consumer joins are delivered.
+
+### Fixed (concurrency / data races)
+
+- **`RoundRobinPartitioner` counter** — now incremented with `sync/atomic`; concurrent producer goroutines previously raced on it.
+- **Shared producer partitioner** — `AsyncProducer` no longer mutates the shared `Producer.partitioner` at `Run` (it derived the same partitioner from config anyway), removing a race with concurrent sync/batch producers. The lazy `partitioner` write in `ProduceSyncResult` was also removed (it is always set at construction).
+- **Idempotent sequence map** — the per-partition `seqCursor` is now mutex-guarded; the parallel per-broker produce fan-out wrote it concurrently.
+- **Process resource limits** — `internal/limits` values are stored with `sync/atomic`; concurrent `NewClient` and in-flight decode/decompress/auth no longer race on them.
+- **Share consumer config write** — the broker-negotiated heartbeat interval is stored on the `ShareConsumer` (mutex-guarded) instead of mutating the shared client `Config`.
+- **Context-aware backoff** — `commitOffsets` rebalance/rejoin retries use a cancellable wait instead of `time.Sleep`, so a cancelled context returns promptly.
+
+### Fixed (consumer correctness)
+
+- **Absolute record offsets** — `parseRecords` now uses the record batch's `baseOffset` to compute each record's absolute offset. Previously offsets were batch-relative (starting from 0), which was masked only when a batch began at partition offset 0 (fresh-topic tests). Any consumer resuming from a committed offset > 0, or reading a topic with prior data, received wrong offsets.
+- **Transaction control markers** — control batches (commit/abort markers) are detected via the batch-header `isControl` bit instead of a misread per-record attribute, and are no longer delivered to the application as garbage records. The consumer/share-consumer still advance past them so read_committed consumers never get stuck re-fetching a marker.
+- **Group leader assignment metadata** — when a consumer is the group leader it refreshes metadata for the union of all members' subscribed topics before assigning, so a topic that only another member subscribes to is no longer dropped (zero partitions) from the computed assignment.
+
+### Security / robustness
+
+- **Bounded decode preallocation** — slice preallocations driven by an untrusted wire array count are capped (`safePrealloc`); a corrupt/hostile frame advertising a huge element count can no longer trigger a multi-gigabyte allocation before the element-by-element decode loop runs. Applied across `ApiVersions`, `Metadata`, admin, ACL, and group decoders.
+- **Record batch magic validation** — `decodeOneRecordBatch` rejects any batch whose magic byte is not `2` instead of silently misparsing v0/v1 message sets into garbage records.
+
+### Added
+
+- **`Admin.DeleteRecords`** (API 21) — delete records before a given offset per partition (use -1 for the high watermark); requests are routed to each partition leader and per-partition results report the new low watermark.
+- **`Admin.ElectLeaders`** (API 43) — trigger preferred or unclean leader election for specific partitions or the whole cluster, with per-partition results.
+- **`Admin.UpsertUserScramCredential` / `Admin.DeleteUserScramCredential`** (API 51, KIP-554) — manage SCRAM-SHA-256/512 user credentials; the salt is generated locally and the salted password derived with PBKDF2 so the plaintext password never leaves the client.
+- **`Admin.DescribeLogDirs`** (API 35) — per-broker log-directory storage usage (size, offset lag, total/usable bytes per partition).
+- **`Admin.DescribeClientQuotas` / `Admin.SetClientQuota`** (APIs 48/49, KIP-546) — describe and set/remove user/client-id/ip client quotas (e.g. `producer_byte_rate`, `consumer_byte_rate`, `request_percentage`), including default-entity support. Adds `wire` float64 codec.
+- **`Admin.ListTransactions` / `Admin.DescribeTransactions`** (APIs 66/65, KIP-664) — list ongoing transactions across all brokers and describe a transactional id's state (producer id/epoch, timeout, start time, enrolled partitions), routing each describe to that id's transaction coordinator.
+- **GROUP config resource (type 32)** — `IncrementalAlterConfigsRequest` can target group configs (`protocol.ConfigResourceGroup`), used to set `share.auto.offset.reset` for share groups.
+
+### Added (observability)
+
+- **`WithSlogLoggerFrom(*slog.Logger)` and `WithSlogHandler(slog.Handler)`** — route GoKafka logs into an application's existing `log/slog` setup (its handler, base attributes, and level), the idiomatic way to integrate logging. Complements the existing `WithLogger`, `WithTracer`, `WithMetricsHook`, Prometheus, and OpenTelemetry bridges.
+
+### Changed (compatibility)
+
+- **`HashPartitioner` now uses Kafka's murmur2** (matching the Java `DefaultPartitioner` and librdkafka) instead of FNV-1a. Key-based routing is now interoperable across mixed-client fleets — the same key lands on the same partition whether produced by GoKafka, the Java client, or librdkafka. **This changes which partition existing keys map to**; if you relied on the previous FNV distribution, pin records with an explicit `Partition`. Verified against Apache Kafka's canonical murmur2 test vectors.
+
+### Changed
+
+- Version negotiation now runs **before** the first metadata refresh so the metadata request itself uses a negotiated version.
+- Raised default version ceilings: `SyncGroup` 3→5, `Heartbeat` 1→4, `LeaveGroup` 2→5.
+- `docker-compose.yml`: set `share.coordinator.state.topic` replication factor / min-ISR to 1 for single-broker KIP-932 dev.
+
+### Performance
+
+- Added a benchmark suite (produce encode single/batch, wire primitives) — the module previously had none, so allocation regressions were invisible.
+- Idempotent producer sequence state keys its map by a `{topic, partition}` struct instead of an `fmt.Sprintf` string, removing a per-record allocation on the idempotent send path.
+- `wire.WriteUUID` appends the 16 raw bytes directly instead of re-encoding via two `int64` conversions.
+
+### Maintenance
+
+- CI now enforces `gofmt`, `go vet`, and `staticcheck` as a blocking gate; the whole tree is `gofmt`-clean and `staticcheck`-clean.
+- Removed dead code (unused helpers/consts) and fixed a no-op assertion in the partitioner test.
+- Generated integration TLS material (`docker/secrets/*.crt`) is no longer tracked; CI and `scripts/gen-test-certs.sh` regenerate it.
+
 ## [0.24.1] - 2026-06-24
 
 ### Fixed

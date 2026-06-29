@@ -1,5 +1,21 @@
 package protocol
 
+// safePrealloc bounds a slice preallocation derived from an untrusted wire
+// array count. A corrupt or hostile frame can advertise a huge element count;
+// capping the initial make() prevents a multi-gigabyte allocation before the
+// decode loop (which reads element-by-element and errors on a short buffer)
+// even runs. Legitimately large arrays still grow via append.
+func safePrealloc(n int) int {
+	const maxPrealloc = 4096
+	if n <= 0 {
+		return 0
+	}
+	if n > maxPrealloc {
+		return maxPrealloc
+	}
+	return n
+}
+
 func flexibleRequestHeader(apiKey, apiVersion int16) bool {
 	switch apiKey {
 	case APIMetadata:
@@ -38,6 +54,18 @@ func flexibleRequestHeader(apiKey, apiVersion int16) bool {
 		return apiVersion >= 2
 	case APICreatePartitions, APIDeleteGroups:
 		return apiVersion >= 2
+	case APIDeleteRecords:
+		return apiVersion >= 2
+	case APIElectLeaders:
+		return apiVersion >= 2
+	case APIDescribeLogDirs:
+		return apiVersion >= 2
+	case APIDescribeClientQuotas, APIAlterClientQuotas:
+		return apiVersion >= 1
+	case APIAlterUserScramCreds:
+		return apiVersion >= 0
+	case APIDescribeTransactions, APIListTransactions:
+		return apiVersion >= 0
 	case APIIncrementalAlterConfigs:
 		return apiVersion >= 1
 	case APICreateAcls, APIDescribeAcls, APIDeleteAcls:
@@ -52,7 +80,7 @@ func flexibleRequestHeader(apiKey, apiVersion int16) bool {
 		return apiVersion >= 3
 	case APIAddPartitionsTxn:
 		return apiVersion >= 3
-	case 	APIEndTxn:
+	case APIEndTxn:
 		return apiVersion >= 3
 	case APIConsumerGroupHeartbeat:
 		return apiVersion >= 0

@@ -43,6 +43,22 @@ func ClientVersion(apiKey int16) int16 {
 		return VerCreatePartitions
 	case APIDeleteGroups:
 		return VerDeleteGroups
+	case APIDeleteRecords:
+		return VerDeleteRecords
+	case APIElectLeaders:
+		return VerElectLeaders
+	case APIDescribeLogDirs:
+		return VerDescribeLogDirs
+	case APIDescribeClientQuotas:
+		return VerDescribeClientQuotas
+	case APIAlterClientQuotas:
+		return VerAlterClientQuotas
+	case APIAlterUserScramCreds:
+		return VerAlterUserScramCreds
+	case APIDescribeTransactions:
+		return VerDescribeTransactions
+	case APIListTransactions:
+		return VerListTransactions
 	case APIIncrementalAlterConfigs:
 		return VerIncrementalAlterConfigs
 	case APIOffsetDelete:

@@ -8,11 +8,6 @@ import (
 	"sync"
 )
 
-const (
-	minEncTableLog = 5
-	maxEncTableLog = 8
-)
-
 type symbolTransform struct {
 	deltaNbBits    uint32
 	deltaFindState int16

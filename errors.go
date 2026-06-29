@@ -6,15 +6,15 @@ import (
 )
 
 var (
-	ErrNoBrokers          = errors.New("gokafka: at least one broker is required")
-	ErrClosed             = errors.New("gokafka: client is closed")
-	ErrNoConsumerGroup    = errors.New("gokafka: consumer group is required")
-	ErrNoShareGroup       = errors.New("gokafka: share group is required")
-	ErrNoSchemaURL        = errors.New("gokafka: schema registry URL is required")
-	ErrTopicNotFound      = errors.New("gokafka: topic not found")
-	ErrNoTransactionalID  = errors.New("gokafka: transactional id is required when transactions are enabled")
-	ErrTransactionAborted = errors.New("gokafka: transaction aborted")
-	ErrRetriable            = errors.New("gokafka: retriable error")
+	ErrNoBrokers             = errors.New("gokafka: at least one broker is required")
+	ErrClosed                = errors.New("gokafka: client is closed")
+	ErrNoConsumerGroup       = errors.New("gokafka: consumer group is required")
+	ErrNoShareGroup          = errors.New("gokafka: share group is required")
+	ErrNoSchemaURL           = errors.New("gokafka: schema registry URL is required")
+	ErrTopicNotFound         = errors.New("gokafka: topic not found")
+	ErrNoTransactionalID     = errors.New("gokafka: transactional id is required when transactions are enabled")
+	ErrTransactionAborted    = errors.New("gokafka: transaction aborted")
+	ErrRetriable             = errors.New("gokafka: retriable error")
 	ErrInvalidProducerConfig = errors.New("gokafka: idempotent producer requires acks=all")
 )
 
@@ -22,31 +22,31 @@ var (
 type ErrorCode int16
 
 const (
-	ErrCodeNone              ErrorCode = 0
-	ErrCodeUnknownTopic      ErrorCode = 3
-	ErrCodeLeaderNotAvail    ErrorCode = 5
-	ErrCodeNotLeaderForPart  ErrorCode = 6
-	ErrCodeRequestTimedOut   ErrorCode = 7
-	ErrCodeNetworkException  ErrorCode = 8
-	ErrCodeCoordinatorLoad          ErrorCode = 14
-	ErrCodeCoordinatorNotAvailable    ErrorCode = 15
-	ErrCodeNotCoordinator             ErrorCode = 16
-	ErrCodeNotEnoughReplicas          ErrorCode = 19
+	ErrCodeNone                         ErrorCode = 0
+	ErrCodeUnknownTopic                 ErrorCode = 3
+	ErrCodeLeaderNotAvail               ErrorCode = 5
+	ErrCodeNotLeaderForPart             ErrorCode = 6
+	ErrCodeRequestTimedOut              ErrorCode = 7
+	ErrCodeNetworkException             ErrorCode = 8
+	ErrCodeCoordinatorLoad              ErrorCode = 14
+	ErrCodeCoordinatorNotAvailable      ErrorCode = 15
+	ErrCodeNotCoordinator               ErrorCode = 16
+	ErrCodeNotEnoughReplicas            ErrorCode = 19
 	ErrCodeNotEnoughReplicasAfterAppend ErrorCode = 20
-	ErrCodeRebalanceInProg   ErrorCode = 27
-	ErrCodeOutOfOrderSequence   ErrorCode = 45
-	ErrCodeInvalidProducerEpoch ErrorCode = 47
-	ErrCodeInvalidTxnState      ErrorCode = 48
-	ErrCodeShareSessionNotFound ErrorCode = 122
-	ErrCodeInvalidShareSessionEpoch ErrorCode = 123
+	ErrCodeRebalanceInProg              ErrorCode = 27
+	ErrCodeOutOfOrderSequence           ErrorCode = 45
+	ErrCodeInvalidProducerEpoch         ErrorCode = 47
+	ErrCodeInvalidTxnState              ErrorCode = 48
+	ErrCodeShareSessionNotFound         ErrorCode = 122
+	ErrCodeInvalidShareSessionEpoch     ErrorCode = 123
 )
 
 // KafkaError wraps a broker error code with context.
 type KafkaError struct {
-	Code    ErrorCode
-	Topic   string
+	Code      ErrorCode
+	Topic     string
 	Partition int32
-	Msg     string
+	Msg       string
 }
 
 func (e *KafkaError) Error() string {

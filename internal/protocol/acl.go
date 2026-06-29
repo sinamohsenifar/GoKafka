@@ -20,9 +20,9 @@ const (
 type ResourceType int8
 
 const (
-	ResourceTopic      ResourceType = 2
-	ResourceGroup      ResourceType = 3
-	ResourceCluster    ResourceType = 4
+	ResourceTopic           ResourceType = 2
+	ResourceGroup           ResourceType = 3
+	ResourceCluster         ResourceType = 4
 	ResourceTransactionalID ResourceType = 5
 )
 
@@ -187,7 +187,7 @@ func decodeCreateACLsResponseLegacy(body []byte) ([]TopicMutationResult, error) 
 	if err != nil {
 		return nil, err
 	}
-	out := make([]TopicMutationResult, 0, int(n))
+	out := make([]TopicMutationResult, 0, safePrealloc(int(n)))
 	for i := 0; i < int(n); i++ {
 		code, err := buf.ReadInt16()
 		if err != nil {
@@ -210,7 +210,7 @@ func decodeCreateACLsResponseFlex(body []byte) ([]TopicMutationResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]TopicMutationResult, 0, int(n)-1)
+	out := make([]TopicMutationResult, 0, safePrealloc(int(n)-1))
 	for i := 1; i < int(n); i++ {
 		code, err := buf.ReadInt16()
 		if err != nil {

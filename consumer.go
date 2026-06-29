@@ -144,24 +144,30 @@ func (c *Consumer) fetchFromBroker(
 	isolation int8,
 	maxRecords int,
 ) ([]Record, error) {
-	body := protocol.EncodeFetchRequest(group, parts, 500, 1, 50<<20, isolation)
-	rb, err := c.client.cluster.Request(ctx, node, protocol.APIFetch, protocol.VerFetch, body)
+	ver := c.client.cluster.NegotiatedVersion(protocol.APIFetch, protocol.VerFetch)
+	body := protocol.EncodeFetchRequest(ver, group, parts, 500, 1, 50<<20, isolation)
+	rb, err := c.client.cluster.Request(ctx, node, protocol.APIFetch, ver, body)
 	if err != nil {
 		c.client.observe.Metrics.OnConsume(0, err)
 		return nil, err
 	}
-	fetched, err := protocol.DecodeFetchResponse(rb)
+	fetched, err := protocol.DecodeFetchResponse(ver, rb)
 	if err != nil {
 		return nil, err
 	}
 	var out []Record
 	for _, fr := range fetched {
+		// Always advance past the record (including transaction control markers)
+		// so read_committed consumers don't get stuck re-fetching a marker.
+		c.bumpOffset(fr.Topic, fr.Partition, fr.Offset+1)
+		if fr.Control {
+			continue
+		}
 		out = append(out, Record{
 			Topic: fr.Topic, Partition: fr.Partition, Offset: fr.Offset,
 			Key: fr.Key, Value: fr.Value, Headers: fetchHeaders(fr.Headers),
 			Timestamp: time.UnixMilli(fr.Timestamp),
 		})
-		c.bumpOffset(fr.Topic, fr.Partition, fr.Offset+1)
 		c.client.observe.Metrics.OnConsume(len(fr.Value), nil)
 		if maxRecords > 0 && len(out) >= maxRecords {
 			break
@@ -191,6 +197,18 @@ func (c *Consumer) bumpOffset(topic string, part int32, off int64) {
 // Commit commits consumed offsets to the consumer group coordinator.
 func (c *Consumer) Commit(ctx context.Context, records ...Record) error {
 	return c.commitOffsets(ctx, records, 0)
+}
+
+// sleepCtx waits for d or until ctx is cancelled, returning ctx.Err() if cancelled.
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 func (c *Consumer) commitOffsets(ctx context.Context, records []Record, attempt int) error {
@@ -240,12 +258,16 @@ func (c *Consumer) commitOffsets(ctx context.Context, records []Record, attempt 
 	}
 	if code != 0 {
 		if code == int16(ErrCodeRebalanceInProg) && attempt+1 < maxCommitAttempts {
-			time.Sleep(500 * time.Millisecond)
+			if err := sleepCtx(ctx, 500*time.Millisecond); err != nil {
+				return err
+			}
 			return c.commitOffsets(ctx, records, attempt+1)
 		}
 		if c.shouldRejoin(newKafkaError(code, "", 0, "offset commit failed")) {
 			if attempt+1 < maxCommitAttempts {
-				time.Sleep(200 * time.Millisecond)
+				if err := sleepCtx(ctx, 200*time.Millisecond); err != nil {
+					return err
+				}
 				if err := c.rejoin(ctx); err != nil {
 					return err
 				}
@@ -282,6 +304,9 @@ func (c *Consumer) joinAndAssign(ctx context.Context) error {
 		rebalanceMs = int32(c.client.cfg.Consumer.RebalanceTimeout / time.Millisecond)
 	}
 
+	joinVer := c.client.cluster.NegotiatedVersion(protocol.APIJoinGroup, protocol.VerJoinGroup)
+	syncVer := c.client.cluster.NegotiatedVersion(protocol.APISyncGroup, protocol.VerSyncGroup)
+
 	var joined protocol.JoinGroupResponse
 	var assignmentBytes []byte
 joinLoop:
@@ -289,14 +314,15 @@ joinLoop:
 	joinInner:
 		for {
 			joinBody := protocol.EncodeJoinGroupRequest(
+				joinVer,
 				c.group, c.memberID, assignor, c.client.cfg.Consumer.GroupInstanceID,
 				c.topics, sessionMs, rebalanceMs, c.isCooperative(),
 			)
-			rb, err := c.client.cluster.Request(ctx, coord, protocol.APIJoinGroup, protocol.VerJoinGroup, joinBody)
+			rb, err := c.client.cluster.Request(ctx, coord, protocol.APIJoinGroup, joinVer, joinBody)
 			if err != nil {
 				return err
 			}
-			joined, err = protocol.DecodeJoinGroupResponse(rb)
+			joined, err = protocol.DecodeJoinGroupResponse(joinVer, rb)
 			if errors.Is(err, protocol.ErrMemberIDRequired) {
 				c.mu.Lock()
 				c.memberID = joined.MemberID
@@ -327,13 +353,31 @@ joinLoop:
 		if joined.MemberID == joined.LeaderID {
 			var members []protocol.MemberSubscription
 			for mid, meta := range joined.Assignments {
-				topics, err := protocol.DecodeConsumerSubscription(meta)
+				topics, err := protocol.DecodeConsumerSubscription(joinVer, meta)
 				if err != nil {
 					return err
 				}
 				members = append(members, protocol.MemberSubscription{MemberID: mid, Topics: topics})
 			}
 			if len(members) > 0 {
+				// The leader assigns partitions for every topic ANY member
+				// subscribes to, so its metadata must cover the union of all
+				// members' subscriptions — not just this member's own topics.
+				// Otherwise topics only other members subscribe to resolve to
+				// zero partitions and are silently dropped from the assignment.
+				topicSet := map[string]struct{}{}
+				for _, m := range members {
+					for _, t := range m.Topics {
+						topicSet[t] = struct{}{}
+					}
+				}
+				allTopics := make([]string, 0, len(topicSet))
+				for t := range topicSet {
+					allTopics = append(allTopics, t)
+				}
+				if err := c.client.cluster.Refresh(ctx, allTopics); err != nil {
+					return err
+				}
 				meta := c.client.cluster.Metadata()
 				topicParts := map[string][]int32{}
 				for _, t := range meta.Topics {
@@ -347,12 +391,12 @@ joinLoop:
 			}
 		}
 
-		syncBody := protocol.EncodeSyncGroupRequest(c.group, joined.MemberID, joined.Protocol, joined.GenerationID, syncAssignments)
-		rb, err := c.client.cluster.Request(ctx, coord, protocol.APISyncGroup, protocol.VerSyncGroup, syncBody)
+		syncBody := protocol.EncodeSyncGroupRequest(syncVer, c.group, joined.MemberID, joined.Protocol, c.client.cfg.Consumer.GroupInstanceID, joined.GenerationID, syncAssignments)
+		rb, err := c.client.cluster.Request(ctx, coord, protocol.APISyncGroup, syncVer, syncBody)
 		if err != nil {
 			return err
 		}
-		assignmentBytes, err = protocol.DecodeSyncGroupResponse(rb)
+		assignmentBytes, err = protocol.DecodeSyncGroupResponse(syncVer, rb)
 		if err != nil {
 			if c.shouldRejoin(err) {
 				c.invalidateCoordinator()

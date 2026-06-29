@@ -24,6 +24,17 @@ func NewSlogTextLogger(w io.Writer, level Level) *SlogLogger {
 	return &SlogLogger{log: slog.New(h), level: level}
 }
 
+// NewSlogLoggerFrom adapts an existing *slog.Logger (with the caller's handler,
+// attributes, and level). Level filtering is delegated to the slog handler, so
+// GoKafka forwards every record. This is the idiomatic way to route GoKafka
+// logs into an application's existing slog setup.
+func NewSlogLoggerFrom(l *slog.Logger) *SlogLogger {
+	if l == nil {
+		l = slog.Default()
+	}
+	return &SlogLogger{log: l, level: LevelDebug}
+}
+
 func (l *SlogLogger) Log(ctx context.Context, level Level, msg string, attrs ...Attr) {
 	if !level.enabled(l.level) {
 		return

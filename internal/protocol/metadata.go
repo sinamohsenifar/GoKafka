@@ -201,7 +201,7 @@ func readCompactInt32Array(buf *wire.Buffer) ([]int32, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]int32, 0, int(n)-1)
+	out := make([]int32, 0, safePrealloc(int(n)-1))
 	for i := 1; i < int(n); i++ {
 		v, err := buf.ReadInt32()
 		if err != nil {
@@ -236,9 +236,9 @@ func encodeMetadataRequestFlex(version int16, topics []string) []byte {
 		buf.WriteCompactArrayLen(len(topics))
 		for _, t := range topics {
 			if version >= 10 {
-				buf.WriteInt64(0)
-				buf.WriteInt64(0)
-				buf.WriteCompactString(t)
+				var zero wire.UUID
+				buf.WriteUUID(zero)
+				buf.WriteCompactNullableString(&t)
 			} else {
 				buf.WriteCompactString(t)
 			}
@@ -383,7 +383,7 @@ func readInt32Array(buf *wire.Buffer) ([]int32, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]int32, 0, int(n))
+	out := make([]int32, 0, safePrealloc(int(n)))
 	for i := 0; i < int(n); i++ {
 		v, err := buf.ReadInt32()
 		if err != nil {

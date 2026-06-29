@@ -3,6 +3,7 @@ package gokafka
 import (
 	"context"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/sinamohsenifar/gokafka/observe"
@@ -72,6 +73,22 @@ func WithTracer(t Tracer) Option {
 func WithSlogLogger(w io.Writer, level LogLevel) Option {
 	return func(c *Config) {
 		c.Observability.Logger = observe.NewSlogLogger(w, level)
+	}
+}
+
+// WithSlogHandler routes GoKafka logs through a caller-provided slog.Handler
+// (level filtering is handled by the handler).
+func WithSlogHandler(h slog.Handler) Option {
+	return func(c *Config) {
+		c.Observability.Logger = observe.NewSlogLoggerFrom(slog.New(h))
+	}
+}
+
+// WithSlogLoggerFrom routes GoKafka logs into an existing *slog.Logger, reusing
+// the application's handler, attributes, and level.
+func WithSlogLoggerFrom(l *slog.Logger) Option {
+	return func(c *Config) {
+		c.Observability.Logger = observe.NewSlogLoggerFrom(l)
 	}
 }
 

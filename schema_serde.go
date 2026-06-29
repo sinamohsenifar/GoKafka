@@ -5,9 +5,9 @@ import (
 )
 
 type (
-	SchemaFormat     = schema.Format
+	SchemaFormat      = schema.Format
 	SchemaSerdeConfig = schema.SerdeConfig
-	SchemaSerde      = schema.Serde
+	SchemaSerde       = schema.Serde
 )
 
 const (

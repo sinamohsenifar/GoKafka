@@ -41,12 +41,6 @@ func (c *Consumer) notifyRevoked(ctx context.Context) {
 	c.notifyRevokedLocked(ctx)
 }
 
-func (c *Consumer) notifyAssigned(ctx context.Context) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.notifyAssignedLocked(ctx)
-}
-
 func (c *Consumer) notifyRevokedLocked(ctx context.Context) {
 	if c.listener == nil || len(c.assignments) == 0 {
 		return

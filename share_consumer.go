@@ -13,17 +13,18 @@ import (
 
 // ShareConsumer reads from topics using a KIP-932 share group (queue semantics).
 type ShareConsumer struct {
-	mu               sync.Mutex
-	client           *Client
-	topics           []string
-	group            string
-	memberID         string
-	memberEpoch      int32
-	coordID          int32
-	hasCoord         bool
-	assignments      []shareAssignment
-	shareSession     map[int32]int32 // broker node -> session epoch
-	hbCancel         context.CancelFunc
+	mu           sync.Mutex
+	client       *Client
+	topics       []string
+	group        string
+	memberID     string
+	memberEpoch  int32
+	coordID      int32
+	hasCoord     bool
+	assignments  []shareAssignment
+	shareSession map[int32]int32 // broker node -> session epoch
+	hbCancel     context.CancelFunc
+	hbInterval   time.Duration // broker-negotiated heartbeat interval (guarded by mu)
 }
 
 type shareAssignment struct {
@@ -78,34 +79,84 @@ func (s *ShareConsumer) Poll(ctx context.Context) ([]Record, error) {
 		byBroker[a.leader] = append(byBroker[a.leader], a)
 	}
 
-	var out []Record
-	for broker, parts := range byBroker {
-		recs, err := s.fetchShare(ctx, broker, group, memberID, parts, maxPoll-len(out))
-		if err != nil {
-			if code, ok := protocol.APIErrorCode(err); ok {
-				switch code {
-				case 5, 6: // NOT_LEADER / LEADER_NOT_AVAILABLE
-					_ = s.client.cluster.Refresh(ctx, s.topics)
-					continue
-				case 122, 123: // SHARE_SESSION_NOT_FOUND / INVALID_SHARE_SESSION_EPOCH
-					s.resetShareSession(broker)
-					recs, err = s.fetchShare(ctx, broker, group, memberID, parts, maxPoll-len(out))
+	// The first ShareFetch against a partition only initializes broker-side
+	// share state and returns no records, so a single fetch round can come back
+	// empty even when data is available. Mirror KafkaShareConsumer.poll: keep
+	// running fetch rounds until records are acquired or the context ends.
+	for {
+		var out []Record
+		for broker, parts := range byBroker {
+			recs, err := s.fetchShare(ctx, broker, group, memberID, parts, maxPoll-len(out))
+			if err != nil {
+				if code, ok := protocol.APIErrorCode(err); ok {
+					switch code {
+					case 5, 6: // NOT_LEADER / LEADER_NOT_AVAILABLE
+						_ = s.client.cluster.Refresh(ctx, s.topics)
+						continue
+					case 122, 123: // SHARE_SESSION_NOT_FOUND / INVALID_SHARE_SESSION_EPOCH
+						s.resetShareSession(broker)
+						recs, err = s.fetchShare(ctx, broker, group, memberID, parts, maxPoll-len(out))
+					}
+				}
+				if err != nil {
+					return nil, err
 				}
 			}
-			if err != nil {
-				return nil, err
+			out = append(out, recs...)
+			if len(out) >= maxPoll {
+				return out[:maxPoll], nil
 			}
 		}
-		out = append(out, recs...)
-		if len(out) >= maxPoll {
-			return out[:maxPoll], nil
+		if len(out) > 0 {
+			return out, nil
+		}
+		// No records yet: stop if the caller's context is done (returning empty,
+		// like a poll timeout), otherwise run another fetch round.
+		select {
+		case <-ctx.Done():
+			return nil, nil
+		default:
 		}
 	}
-	return out, nil
+}
+
+// applyShareStartOffset honours WithConsumeFromBeginning for share groups by
+// setting the group-level share.auto.offset.reset config to "earliest" before
+// the share-partition start offset is initialized on the first fetch. Without
+// this the broker default ("latest") is used and records produced before the
+// consumer joins are never delivered. It must run before the first ShareFetch.
+func (s *ShareConsumer) applyShareStartOffset(ctx context.Context) error {
+	if !s.client.cfg.Consumer.ConsumeFromBeginning {
+		return nil
+	}
+	val := "earliest"
+	ver := s.client.cluster.NegotiatedVersion(protocol.APIIncrementalAlterConfigs, protocol.VerIncrementalAlterConfigs)
+	if ver < 0 {
+		ver = protocol.VerIncrementalAlterConfigs
+	}
+	body := protocol.EncodeIncrementalAlterConfigsRequest(ver, protocol.ConfigResourceGroup,
+		map[string][]protocol.ConfigAlteration{
+			s.group: {{Name: "share.auto.offset.reset", Value: &val}},
+		})
+	resp, err := s.client.cluster.RequestAny(ctx, protocol.APIIncrementalAlterConfigs, ver, body)
+	if err != nil {
+		return err
+	}
+	code, err := protocol.DecodeIncrementalAlterConfigsResponse(ver, resp)
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		return newKafkaError(code, "", 0, "set share.auto.offset.reset failed")
+	}
+	return nil
 }
 
 func (s *ShareConsumer) joinShareGroup(ctx context.Context) error {
 	if err := s.client.cluster.Refresh(ctx, s.topics); err != nil {
+		return err
+	}
+	if err := s.applyShareStartOffset(ctx); err != nil {
 		return err
 	}
 	coord, err := s.coordinator(ctx)
@@ -121,7 +172,7 @@ func (s *ShareConsumer) joinShareGroup(ctx context.Context) error {
 	s.mu.Unlock()
 
 	var gotAssignment bool
-	for attempt := 0; attempt < 30; attempt++ {
+	for attempt := 0; attempt < 60; attempt++ {
 		s.mu.Lock()
 		epoch := s.memberEpoch
 		s.mu.Unlock()
@@ -168,11 +219,10 @@ func (s *ShareConsumer) joinShareGroup(ctx context.Context) error {
 		s.memberEpoch = resp.MemberEpoch
 		s.coordID = coord
 		s.hasCoord = true
-		s.mu.Unlock()
-
 		if resp.HeartbeatIntervalMs > 0 {
-			s.client.cfg.Consumer.HeartbeatInterval = time.Duration(resp.HeartbeatIntervalMs) * time.Millisecond
+			s.hbInterval = time.Duration(resp.HeartbeatIntervalMs) * time.Millisecond
 		}
+		s.mu.Unlock()
 
 		if len(resp.Assignment) > 0 {
 			if err := s.applyShareAssignment(resp.Assignment); err != nil {
@@ -181,13 +231,10 @@ func (s *ShareConsumer) joinShareGroup(ctx context.Context) error {
 			gotAssignment = true
 			break
 		}
-		if resp.MemberEpoch <= 0 {
-			continue
-		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(200 * time.Millisecond):
+		case <-time.After(500 * time.Millisecond):
 		}
 	}
 	if !gotAssignment {
@@ -255,6 +302,9 @@ func (s *ShareConsumer) fetchShare(ctx context.Context, broker int32, group, mem
 
 	var out []Record
 	for _, fr := range resp.Records {
+		if fr.Control { // skip transaction control markers
+			continue
+		}
 		out = append(out, Record{
 			Topic: fr.Topic, Partition: fr.Partition, Offset: fr.Offset,
 			Key: fr.Key, Value: fr.Value, Headers: fetchHeaders(fr.Headers),
@@ -315,8 +365,9 @@ func (s *ShareConsumer) Acknowledge(ctx context.Context, records ...Record) erro
 }
 
 func (s *ShareConsumer) sendShareHeartbeat(ctx context.Context, coord int32, req protocol.ShareGroupHeartbeatRequest) (protocol.ShareGroupHeartbeatResponse, error) {
+	ver := s.client.cluster.NegotiatedVersion(protocol.APIShareGroupHeartbeat, protocol.VerShareGroupHeartbeat)
 	body := protocol.EncodeShareGroupHeartbeatRequest(req)
-	rb, err := s.client.cluster.Request(ctx, coord, protocol.APIShareGroupHeartbeat, protocol.VerShareGroupHeartbeat, body)
+	rb, err := s.client.cluster.Request(ctx, coord, protocol.APIShareGroupHeartbeat, ver, body)
 	if err != nil {
 		return protocol.ShareGroupHeartbeatResponse{}, err
 	}
@@ -419,7 +470,12 @@ func (s *ShareConsumer) stopShareHeartbeat() {
 }
 
 func (s *ShareConsumer) shareHeartbeatLoop(ctx context.Context) {
-	interval := s.client.cfg.Consumer.HeartbeatInterval
+	s.mu.Lock()
+	interval := s.hbInterval
+	s.mu.Unlock()
+	if interval <= 0 {
+		interval = s.client.cfg.Consumer.HeartbeatInterval
+	}
 	if interval <= 0 {
 		interval = 3 * time.Second
 	}

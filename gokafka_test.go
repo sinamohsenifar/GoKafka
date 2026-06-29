@@ -1,6 +1,7 @@
 package gokafka_test
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/sinamohsenifar/gokafka"
@@ -11,7 +12,9 @@ func TestHashPartitioner(t *testing.T) {
 	if got := p.Partition([]byte("key"), 3); got < 0 || got >= 3 {
 		t.Fatalf("partition out of range: %d", got)
 	}
-	if p.Partition([]byte("key"), 3) != p.Partition([]byte("key"), 3) {
+	first := p.Partition([]byte("key"), 3)
+	second := p.Partition([]byte("key"), 3)
+	if first != second {
 		t.Fatal("expected stable hash partition")
 	}
 }
@@ -25,6 +28,26 @@ func TestRoundRobinPartitioner(t *testing.T) {
 	if len(seen) != 3 {
 		t.Fatalf("expected all partitions visited, got %v", seen)
 	}
+}
+
+// TestRoundRobinPartitionerConcurrent exercises the atomic counter under -race;
+// concurrent producer goroutines share one partitioner.
+func TestRoundRobinPartitionerConcurrent(t *testing.T) {
+	p := &gokafka.RoundRobinPartitioner{}
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 1000; i++ {
+				if got := p.Partition(nil, 4); got < 0 || got >= 4 {
+					t.Errorf("partition out of range: %d", got)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func TestWithConsumerMergesConfig(t *testing.T) {

@@ -74,9 +74,9 @@ func sanitizeMetric(name string) string {
 
 // OTelBridge adapts GoKafka observability to OpenTelemetry SDK types in application code.
 type OTelBridge struct {
-	EmitLog       func(level Level, msg string, attrs map[string]any)
-	RecordMetric  func(name string, kind string, value float64, attrs map[string]string)
-	StartSpan     func(ctx context.Context, name string, attrs map[string]string) (context.Context, func())
+	EmitLog      func(level Level, msg string, attrs map[string]any)
+	RecordMetric func(name string, kind string, value float64, attrs map[string]string)
+	StartSpan    func(ctx context.Context, name string, attrs map[string]string) (context.Context, func())
 }
 
 // OTelMetricsRecorder wraps OTelBridge as a MetricsRecorder.
@@ -117,7 +117,7 @@ func (e ElasticAPMLogger) Log(ctx context.Context, level Level, msg string, attr
 		Format:      LogFormatECS,
 		ServiceName: e.ServiceName,
 		Version:     e.Version,
-		Output:      writerFunc(func(b []byte) (int, error) {
+		Output: writerFunc(func(b []byte) (int, error) {
 			if e.Emit != nil {
 				e.Emit(b)
 			}

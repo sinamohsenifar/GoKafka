@@ -24,7 +24,7 @@ func decodeCreateTopicsResponseLegacy(body []byte) ([]TopicMutationResult, error
 	if err != nil {
 		return nil, err
 	}
-	out := make([]TopicMutationResult, 0, int(n))
+	out := make([]TopicMutationResult, 0, safePrealloc(int(n)))
 	for i := 0; i < int(n); i++ {
 		name, err := buf.ReadString()
 		if err != nil {
@@ -51,7 +51,7 @@ func decodeCreateTopicsResponseFlex(body []byte) ([]TopicMutationResult, error) 
 	if err != nil {
 		return nil, err
 	}
-	out := make([]TopicMutationResult, 0, int(n)-1)
+	out := make([]TopicMutationResult, 0, safePrealloc(int(n)-1))
 	for i := 1; i < int(n); i++ {
 		name, err := buf.ReadCompactString()
 		if err != nil {
@@ -93,7 +93,7 @@ func DecodeDeleteTopicsResponse(body []byte) ([]TopicMutationResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]TopicMutationResult, 0, int(n)-1)
+	out := make([]TopicMutationResult, 0, safePrealloc(int(n)-1))
 	for i := 1; i < int(n); i++ {
 		name, err := buf.ReadCompactString()
 		if err != nil {
@@ -120,8 +120,8 @@ type ConfigAlteration struct {
 	Value *string // nil deletes the config
 }
 
-func EncodeAlterConfigsRequest(resources map[string][]ConfigAlteration) []byte {
-	if VerAlterConfigs >= 2 {
+func EncodeAlterConfigsRequest(version int16, resources map[string][]ConfigAlteration) []byte {
+	if version >= 2 {
 		return encodeAlterConfigsRequestFlex(resources)
 	}
 	return encodeAlterConfigsRequestLegacy(resources)
@@ -151,14 +151,8 @@ func encodeAlterConfigsRequestFlex(resources map[string][]ConfigAlteration) []by
 		buf.WriteCompactString(name)
 		buf.WriteCompactArrayLen(len(alters))
 		for _, a := range alters {
-			if a.Value != nil {
-				buf.WriteCompactString(a.Name)
-				buf.WriteCompactNullableString(a.Value)
-				buf.WriteInt8(0) // config_source DYNAMIC_TOPIC_CONFIG
-			} else {
-				buf.WriteCompactString(a.Name)
-				buf.WriteCompactNullableString(a.Value)
-			}
+			buf.WriteCompactString(a.Name)
+			buf.WriteCompactNullableString(a.Value)
 			buf.WriteEmptyTagSection()
 		}
 		buf.WriteEmptyTagSection()
@@ -168,8 +162,8 @@ func encodeAlterConfigsRequestFlex(resources map[string][]ConfigAlteration) []by
 	return buf.Bytes()
 }
 
-func DecodeAlterConfigsResponse(body []byte) (int16, error) {
-	if VerAlterConfigs >= 2 {
+func DecodeAlterConfigsResponse(version int16, body []byte) (int16, error) {
+	if version >= 2 {
 		return decodeAlterConfigsResponseFlex(body)
 	}
 	return decodeAlterConfigsResponseLegacy(body)
@@ -215,21 +209,21 @@ func decodeAlterConfigsResponseFlex(body []byte) (int16, error) {
 		return 0, err
 	}
 	for i := 1; i < int(n); i++ {
-		if _, err := buf.ReadInt8(); err != nil {
-			return 0, err
-		}
-		if _, err := buf.ReadCompactString(); err != nil {
-			return 0, err
-		}
 		code, err := buf.ReadInt16()
 		if err != nil {
 			return 0, err
 		}
+		if _, err := buf.ReadCompactNullableString(); err != nil { // error_message
+			return 0, err
+		}
+		if _, err := buf.ReadInt8(); err != nil { // resource_type
+			return 0, err
+		}
+		if _, err := buf.ReadCompactString(); err != nil { // resource_name
+			return 0, err
+		}
 		if code != 0 {
 			return code, nil
-		}
-		if _, err := buf.ReadCompactNullableString(); err != nil {
-			return 0, err
 		}
 		if err := buf.SkipTagSection(); err != nil {
 			return 0, err
@@ -243,9 +237,9 @@ func decodeAlterConfigsResponseFlex(body []byte) (int16, error) {
 
 // CreatePartitionsSpec adds partitions to a topic.
 type CreatePartitionsSpec struct {
-	Topic          string
-	Count          int32
-	Assignment     [][]int32 // optional replica assignments per new partition
+	Topic      string
+	Count      int32
+	Assignment [][]int32 // optional replica assignments per new partition
 }
 
 func EncodeCreatePartitionsRequest(version int16, specs []CreatePartitionsSpec, timeoutMs int32) []byte {
@@ -312,7 +306,7 @@ func decodeCreatePartitionsResponseLegacy(body []byte) ([]TopicMutationResult, e
 	if err != nil {
 		return nil, err
 	}
-	out := make([]TopicMutationResult, 0, int(n))
+	out := make([]TopicMutationResult, 0, safePrealloc(int(n)))
 	for i := 0; i < int(n); i++ {
 		name, err := buf.ReadString()
 		if err != nil {
@@ -339,7 +333,7 @@ func decodeCreatePartitionsResponseFlex(body []byte) ([]TopicMutationResult, err
 	if err != nil {
 		return nil, err
 	}
-	out := make([]TopicMutationResult, 0, int(n)-1)
+	out := make([]TopicMutationResult, 0, safePrealloc(int(n)-1))
 	for i := 1; i < int(n); i++ {
 		name, err := buf.ReadCompactString()
 		if err != nil {
@@ -493,18 +487,18 @@ const (
 	ConfigOpDelete int8 = 1
 )
 
-func EncodeIncrementalAlterConfigsRequest(version int16, resources map[string][]ConfigAlteration) []byte {
+func EncodeIncrementalAlterConfigsRequest(version int16, resourceType int8, resources map[string][]ConfigAlteration) []byte {
 	if version >= 1 {
-		return encodeIncrementalAlterConfigsFlex(resources)
+		return encodeIncrementalAlterConfigsFlex(resourceType, resources)
 	}
-	return encodeIncrementalAlterConfigsLegacy(resources)
+	return encodeIncrementalAlterConfigsLegacy(resourceType, resources)
 }
 
-func encodeIncrementalAlterConfigsLegacy(resources map[string][]ConfigAlteration) []byte {
+func encodeIncrementalAlterConfigsLegacy(resourceType int8, resources map[string][]ConfigAlteration) []byte {
 	buf := wire.NewBuffer(64)
 	buf.WriteInt32(int32(len(resources)))
 	for name, alters := range resources {
-		buf.WriteInt8(ConfigResourceTopic)
+		buf.WriteInt8(resourceType)
 		buf.WriteString(name)
 		buf.WriteInt32(int32(len(alters)))
 		for _, a := range alters {
@@ -521,11 +515,11 @@ func encodeIncrementalAlterConfigsLegacy(resources map[string][]ConfigAlteration
 	return buf.Bytes()
 }
 
-func encodeIncrementalAlterConfigsFlex(resources map[string][]ConfigAlteration) []byte {
+func encodeIncrementalAlterConfigsFlex(resourceType int8, resources map[string][]ConfigAlteration) []byte {
 	buf := wire.NewBuffer(64)
 	buf.WriteCompactArrayLen(len(resources))
 	for name, alters := range resources {
-		buf.WriteInt8(ConfigResourceTopic)
+		buf.WriteInt8(resourceType)
 		buf.WriteCompactString(name)
 		buf.WriteCompactArrayLen(len(alters))
 		for _, a := range alters {
@@ -579,7 +573,7 @@ func DecodeDeleteGroupsResponse(body []byte) ([]GroupMutationResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]GroupMutationResult, 0, int(n)-1)
+	out := make([]GroupMutationResult, 0, safePrealloc(int(n)-1))
 	for i := 1; i < int(n); i++ {
 		id, err := buf.ReadCompactString()
 		if err != nil {

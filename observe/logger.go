@@ -31,15 +31,6 @@ type LoggerConfig struct {
 	Version     string
 }
 
-func defaultLoggerConfig() LoggerConfig {
-	return LoggerConfig{
-		Level:       LevelInfo,
-		Format:      LogFormatJSON,
-		Output:      os.Stderr,
-		ServiceName: "gokafka",
-	}
-}
-
 // NativeLogger is the built-in structured logger (text, JSON, or ECS).
 type NativeLogger struct {
 	cfg LoggerConfig

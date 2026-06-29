@@ -36,12 +36,16 @@ func (a *Admin) AlterTopicConfigs(ctx context.Context, alters map[string][]Topic
 		}
 		resources[topic] = out
 	}
-	body := protocol.EncodeAlterConfigsRequest(resources)
-	resp, err := a.requestAny(ctx, protocol.APIAlterConfigs, protocol.VerAlterConfigs, body)
+	ver := a.client.cluster.NegotiatedVersion(protocol.APIAlterConfigs, protocol.VerAlterConfigs)
+	if ver < 0 {
+		ver = protocol.VerAlterConfigs
+	}
+	body := protocol.EncodeAlterConfigsRequest(ver, resources)
+	resp, err := a.requestAny(ctx, protocol.APIAlterConfigs, ver, body)
 	if err != nil {
 		return err
 	}
-	code, err := protocol.DecodeAlterConfigsResponse(resp)
+	code, err := protocol.DecodeAlterConfigsResponse(ver, resp)
 	if err != nil {
 		return err
 	}
@@ -68,7 +72,7 @@ func (a *Admin) IncrementalAlterTopicConfigs(ctx context.Context, alters map[str
 	if ver < 0 {
 		ver = protocol.VerIncrementalAlterConfigs
 	}
-	body := protocol.EncodeIncrementalAlterConfigsRequest(ver, resources)
+	body := protocol.EncodeIncrementalAlterConfigsRequest(ver, protocol.ConfigResourceTopic, resources)
 	resp, err := a.requestAny(ctx, protocol.APIIncrementalAlterConfigs, ver, body)
 	if err != nil {
 		return err
