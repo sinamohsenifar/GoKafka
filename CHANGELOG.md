@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.23] - 2026-06-29
+
+### Added
+
+- **Schema Registry subject-name strategies** (confluent-kafka-go parity): `SubjectForRecord` (RecordNameStrategy) and `SubjectForTopicRecord` (TopicRecordNameStrategy) join the existing `SubjectForTopic` (TopicNameStrategy), plus a pluggable `SubjectNameStrategy` func type with `TopicNameStrategy`/`RecordNameStrategy`/`TopicRecordNameStrategy` values — enabling multiple event types per topic.
+- **In-memory mock Schema Registry** (`schema.MockRegistry`, equivalent to confluent-kafka-go's mock SR client): implements the new `schema.SchemaClient` interface so `Serde` encode/decode round-trips can be unit-tested with **no running registry**. Dedupes identical schemas per subject and tracks versions.
+
+### Changed
+
+- `schema.NewSerde` now accepts the `SchemaClient` interface instead of a concrete `*Registry` (backward compatible — `*Registry` satisfies it).
+
 ## [0.25.22] - 2026-06-29
 
 ### Added
