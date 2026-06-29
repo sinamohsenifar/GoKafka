@@ -3,6 +3,8 @@ package gokafka
 import (
 	"errors"
 	"fmt"
+	"io"
+	"net"
 )
 
 var (
@@ -89,21 +91,23 @@ func newKafkaError(code int16, topic string, part int32, msg string) *KafkaError
 
 // IsRetriable reports whether an error should be retried.
 func IsRetriable(err error) bool {
+	if err == nil {
+		return false
+	}
 	var ke *KafkaError
 	if AsKafkaError(err, &ke) {
 		return ke.Retriable()
 	}
-	return false
-}
-
-// AsKafkaError reports whether err is a *KafkaError.
-func AsKafkaError(err error, target **KafkaError) bool {
-	if err == nil {
-		return false
-	}
-	if ke, ok := err.(*KafkaError); ok {
-		*target = ke
+	// Transport/connection failures (e.g. a broker dying mid-request) are
+	// transient: refreshing metadata and retrying routes to the new leader.
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) {
 		return true
 	}
-	return false
+	var nerr net.Error
+	return errors.As(err, &nerr)
+}
+
+// AsKafkaError reports whether err is (or wraps) a *KafkaError.
+func AsKafkaError(err error, target **KafkaError) bool {
+	return errors.As(err, target)
 }
