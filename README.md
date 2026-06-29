@@ -14,7 +14,7 @@ The API is built around `context.Context`, functional options, and explicit erro
 go get github.com/sinamohsenifar/gokafka@v0.25.0
 ```
 
-**Requirements:** Go 1.22+ · Kafka 3.4+ (KRaft recommended; 4.x is KRaft-only). CI tests Go 1.22–1.24 against Kafka 3.9.2 and 4.3.0.
+**Requirements:** Go 1.22+ · Kafka 3.4+ (KRaft recommended; 4.x is KRaft-only). CI tests Go 1.22–1.26 against Kafka 3.9.2, 4.0.2, 4.1.2, 4.2.1, and 4.3.0.
 
 ### Supported Apache Kafka releases
 
@@ -41,10 +41,12 @@ Several mature Kafka clients exist for Go. They differ mainly in dependencies, d
 | **Dependencies** | stdlib only | Go modules | Go modules | Go modules | CGO + librdkafka |
 | **Pure Go binary** | Yes | Yes | Yes | Yes | No (native libs) |
 | **Protocol implementation** | In-tree | In-tree | In-tree | In-tree | librdkafka wrapper |
-| **Idempotent producer** | Yes | Yes | Yes | Yes | Yes |
-| **Transactions (EOS)** | Yes | Yes | Limited | Yes | Yes |
+| **Idempotent producer** | Yes | Yes | No | Yes | Yes |
+| **Transactions (EOS)** | Yes | Yes | No | Yes | Yes |
 | **Consumer groups** | Yes | Yes | Yes | Yes | Yes |
-| **Cooperative rebalance** | Yes | Yes | Partial | Yes | Yes |
+| **Cooperative rebalance** | Yes | Yes | No | Yes | Yes |
+| **KIP-848 next-gen groups** | Yes | Yes | No | No | Yes |
+| **KIP-932 share groups** | Yes | Yes | No | No | No |
 | **Admin client** | Yes | Yes | Partial | Yes | Yes |
 | **ACL admin** | Yes | Yes | No | Yes | Yes |
 | **zstd compression** | Yes (pure Go) | Yes | Yes | Yes | Yes |
