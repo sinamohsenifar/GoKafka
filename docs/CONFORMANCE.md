@@ -209,7 +209,9 @@ GoKafka has regression tests for these: read_committed aborted filtering,
 leader-epoch failover, seed failover, coordinator startup retries, and a
 dedicated retry/error-classification suite (`errors_test.go`) that locks in
 retriable-error and transport-failure handling (covers #2/#4/#5/#6/#7/#8/#10).
-The only remaining "test recommended" follow-ups are integration tests for
-buffered-record drop on rebalance (#3) and a connection-leak failover loop (#10).
+Connection/goroutine-leak and Close-idempotency (#1/#10) are now covered by
+`integration_lifecycle_test.go` (client connect/close loop and consumer
+join/leave loop assert no goroutine growth). The only remaining "test
+recommended" follow-up is buffered-record drop on rebalance (#3).
 
 _Generated from a verification pass against Apache Kafka 4.3, Confluent Schema Registry docs, and a cross-library GitHub-issue audit._
