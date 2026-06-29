@@ -37,6 +37,7 @@ const (
 	ErrCodeOutOfOrderSequence           ErrorCode = 45
 	ErrCodeInvalidProducerEpoch         ErrorCode = 47
 	ErrCodeInvalidTxnState              ErrorCode = 48
+	ErrCodeConcurrentTransactions       ErrorCode = 51
 	ErrCodeShareSessionNotFound         ErrorCode = 122
 	ErrCodeInvalidShareSessionEpoch     ErrorCode = 123
 )
@@ -61,7 +62,7 @@ func (e *KafkaError) Retriable() bool {
 	case ErrCodeLeaderNotAvail, ErrCodeNotLeaderForPart, ErrCodeRequestTimedOut,
 		ErrCodeNetworkException, ErrCodeCoordinatorLoad, ErrCodeCoordinatorNotAvailable, ErrCodeNotCoordinator,
 		ErrCodeNotEnoughReplicas, ErrCodeNotEnoughReplicasAfterAppend, ErrCodeRebalanceInProg,
-		ErrCodeInvalidProducerEpoch, ErrCodeOutOfOrderSequence,
+		ErrCodeInvalidProducerEpoch, ErrCodeOutOfOrderSequence, ErrCodeConcurrentTransactions,
 		ErrCodeShareSessionNotFound, ErrCodeInvalidShareSessionEpoch:
 		return true
 	default:
