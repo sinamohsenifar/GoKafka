@@ -30,6 +30,8 @@ const (
 	APIDescribeClientQuotas    int16 = 48
 	APIAlterClientQuotas       int16 = 49
 	APIAlterUserScramCreds     int16 = 51
+	APIDescribeTransactions    int16 = 65
+	APIListTransactions        int16 = 66
 	APISaslHandshake           int16 = 17
 	APISaslAuthenticate        int16 = 36
 	APIConsumerGroupHeartbeat  int16 = 68
@@ -66,6 +68,8 @@ const (
 	VerDescribeClientQuotas    int16 = 1
 	VerAlterClientQuotas       int16 = 1
 	VerAlterUserScramCreds     int16 = 0
+	VerDescribeTransactions    int16 = 0
+	VerListTransactions        int16 = 2
 	VerDeleteGroups            int16 = 2
 	VerIncrementalAlterConfigs int16 = 0
 	VerOffsetDelete            int16 = 0

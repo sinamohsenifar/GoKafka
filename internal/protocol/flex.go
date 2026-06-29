@@ -64,6 +64,8 @@ func flexibleRequestHeader(apiKey, apiVersion int16) bool {
 		return apiVersion >= 1
 	case APIAlterUserScramCreds:
 		return apiVersion >= 0
+	case APIDescribeTransactions, APIListTransactions:
+		return apiVersion >= 0
 	case APIIncrementalAlterConfigs:
 		return apiVersion >= 1
 	case APICreateAcls, APIDescribeAcls, APIDeleteAcls:
