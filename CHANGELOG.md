@@ -45,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **GROUP config resource (type 32)** — `IncrementalAlterConfigsRequest` can target group configs (`protocol.ConfigResourceGroup`), used to set `share.auto.offset.reset` for share groups.
 
+### Changed (compatibility)
+
+- **`HashPartitioner` now uses Kafka's murmur2** (matching the Java `DefaultPartitioner` and librdkafka) instead of FNV-1a. Key-based routing is now interoperable across mixed-client fleets — the same key lands on the same partition whether produced by GoKafka, the Java client, or librdkafka. **This changes which partition existing keys map to**; if you relied on the previous FNV distribution, pin records with an explicit `Partition`. Verified against Apache Kafka's canonical murmur2 test vectors.
+
 ### Changed
 
 - Version negotiation now runs **before** the first metadata refresh so the metadata request itself uses a negotiated version.
