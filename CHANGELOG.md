@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.21] - 2026-06-29
+
+### Added
+
+- **CRC32 partitioner + custom partitioners** (competitor parity — kafka-go/sarama/librdkafka). `CRC32Partitioner` routes keyed records by CRC32, matching **librdkafka**'s `consistent` partitioner and kafka-go's `CRC32Balancer`, so keys co-partition across C/Python/.NET/Go(librdkafka) producers. `WithPartitioner(p)` plugs any custom `Partitioner`, and `ProducerPartitionCRC32` selects CRC32 via strategy. The existing `HashPartitioner` (murmur2) remains the default and is the Java-client/Sarama-compatible choice. Added unit tests pinning murmur2 to the Apache Kafka Java test vectors.
+
 ## [0.25.20] - 2026-06-29
 
 ### Changed

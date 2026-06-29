@@ -1,8 +1,13 @@
 package gokafka
 
-import "sync/atomic"
+import (
+	"hash/crc32"
+	"sync/atomic"
+)
 
-// Partitioner selects a partition for a record key.
+// Partitioner selects a partition for a record key. Implementations must be safe
+// for concurrent use by multiple producer goroutines. A record's explicit
+// Partition (>= 0) always wins over the partitioner.
 type Partitioner interface {
 	Partition(key []byte, numPartitions int) int32
 }
@@ -85,4 +90,20 @@ func (r *RoundRobinPartitioner) Partition(_ []byte, n int) int32 {
 	}
 	v := atomic.AddUint32(&r.counter, 1)
 	return int32(v % uint32(n))
+}
+
+// CRC32Partitioner routes records by the CRC32 (IEEE) of the key, matching
+// librdkafka's `consistent`/`consistent_random` partitioner and kafka-go's
+// CRC32Balancer. Use it when interoperating with C/C++/Python/.NET/Go producers
+// built on librdkafka so that the same key lands on the same partition across the
+// fleet. Keyless records go to partition 0; pair with RoundRobinPartitioner to
+// spread keyless traffic. (For Java-client/Sarama interop use HashPartitioner,
+// which is murmur2-based.)
+type CRC32Partitioner struct{}
+
+func (CRC32Partitioner) Partition(key []byte, n int) int32 {
+	if n <= 0 || len(key) == 0 {
+		return 0
+	}
+	return int32(crc32.ChecksumIEEE(key) % uint32(n))
 }

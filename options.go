@@ -45,6 +45,14 @@ func WithProducerCompressionLevel(level int) Option {
 	return func(c *Config) { c.Producer.CompressionLevel = level }
 }
 
+// WithPartitioner sets a custom partitioner for keyless/keyed routing, overriding
+// PartitionStrategy. Built-in choices are HashPartitioner (murmur2, the default),
+// CRC32Partitioner (librdkafka-compatible), and RoundRobinPartitioner; pass any
+// type implementing Partitioner for custom routing.
+func WithPartitioner(p Partitioner) Option {
+	return func(c *Config) { c.Producer.Partitioner = p }
+}
+
 // WithProducer merges producer settings into the client config.
 func WithProducer(ps ProducerConfig) Option {
 	return func(c *Config) {
@@ -193,14 +201,18 @@ type ProducerConfig struct {
 	BatchSize         int
 	Linger            time.Duration
 	PartitionStrategy ProducerPartitionStrategy
+	// Partitioner, when non-nil, overrides PartitionStrategy with a custom
+	// Partitioner (set via WithPartitioner).
+	Partitioner Partitioner
 }
 
 // ProducerPartitionStrategy selects how records are routed to partitions.
 type ProducerPartitionStrategy int
 
 const (
-	ProducerPartitionHash ProducerPartitionStrategy = iota
-	ProducerPartitionRoundRobin
+	ProducerPartitionHash       ProducerPartitionStrategy = iota // murmur2 (Java/Sarama-compatible)
+	ProducerPartitionRoundRobin                                  // spread keyless records
+	ProducerPartitionCRC32                                       // CRC32 (librdkafka/kafka-go-compatible)
 )
 
 // GroupProtocol selects classic JoinGroup/SyncGroup or KIP-848 ConsumerGroupHeartbeat.
@@ -316,9 +328,14 @@ func defaultProducerConfig() ProducerConfig {
 }
 
 func partitionerFromConfig(cfg ProducerConfig) Partitioner {
+	if cfg.Partitioner != nil {
+		return cfg.Partitioner
+	}
 	switch cfg.PartitionStrategy {
 	case ProducerPartitionRoundRobin:
 		return &RoundRobinPartitioner{}
+	case ProducerPartitionCRC32:
+		return CRC32Partitioner{}
 	default:
 		return HashPartitioner{}
 	}
