@@ -20,6 +20,34 @@ type Producer struct {
 	idState     *produce.State
 	pidMu       sync.Mutex
 	pidReady    bool
+	// txnPID caches the transactional producer id/epoch across sequential
+	// transactions under KIP-890 TV2: EndTxn v5 returns the server-bumped epoch,
+	// which the next BeginTransaction reuses instead of re-running InitProducerID.
+	txnPID      protocol.ProducerID
+	txnPIDValid bool
+}
+
+// cacheTxnPID stores the TV2 server-bumped transactional producer id for reuse.
+func (p *Producer) cacheTxnPID(pid protocol.ProducerID) {
+	p.pidMu.Lock()
+	p.txnPID = pid
+	p.txnPIDValid = true
+	p.pidMu.Unlock()
+}
+
+// clearTxnPID invalidates the cached transactional producer id (uncertain state
+// or non-TV2 path), forcing the next BeginTransaction to re-initialize.
+func (p *Producer) clearTxnPID() {
+	p.pidMu.Lock()
+	p.txnPIDValid = false
+	p.pidMu.Unlock()
+}
+
+// cachedTxnPID returns the cached transactional producer id, if valid.
+func (p *Producer) cachedTxnPID() (protocol.ProducerID, bool) {
+	p.pidMu.Lock()
+	defer p.pidMu.Unlock()
+	return p.txnPID, p.txnPIDValid
 }
 
 // ProduceSync sends records and waits for broker acknowledgement.

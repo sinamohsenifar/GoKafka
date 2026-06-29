@@ -50,12 +50,25 @@ func (p *Producer) BeginTransaction(ctx context.Context) (*TransactionalProducer
 		registered:       map[partKey]struct{}{},
 		registeredGroups: map[string]struct{}{},
 	}
-	if err := tp.init(ctx); err != nil {
+	tv2 := false
+	if lvl, ok := p.client.BrokerFeature("transaction.version"); ok && lvl >= 2 {
+		tv2 = true
+	}
+	// KIP-890 TV2: reuse the producer id/epoch carried over from the previous
+	// transaction's EndTxn v5 response, skipping a fresh InitProducerID. The
+	// coordinator is still needed for the EndTxn round-trip.
+	if cached, ok := p.cachedTxnPID(); tv2 && ok {
+		coord, err := p.client.cluster.TransactionCoordinator(ctx, txnID)
+		if err != nil {
+			return nil, err
+		}
+		tp.coordinator = coord
+		tp.pid = cached
+		tp.idState = produce.NewState(cached)
+	} else if err := tp.init(ctx); err != nil {
 		return nil, err
 	}
-	if lvl, ok := p.client.BrokerFeature("transaction.version"); ok && lvl >= 2 {
-		tp.tv2 = true
-	}
+	tp.tv2 = tv2
 	tp.open = true
 	return tp, nil
 }
@@ -294,15 +307,58 @@ func (t *TransactionalProducer) endTxn(ctx context.Context, commit bool) error {
 	if !t.open {
 		return ErrTransactionAborted
 	}
-	body := protocol.EncodeEndTxn(t.txnID, t.pid.ID, t.pid.Epoch, commit)
-	if err := t.txnCoordRequest(ctx, protocol.APIEndTxn, protocol.VerEndTxn, body,
-		func(rb []byte) (int16, error) { return protocol.DecodeEndTxn(rb) },
-		"end transaction failed"); err != nil {
+	ver := t.client.cluster.NegotiatedVersion(protocol.APIEndTxn, protocol.VerEndTxn)
+	if ver <= 0 {
+		ver = protocol.VerEndTxn
+	}
+	var res protocol.EndTxnResult
+	err := retryRetriable(ctx, coordinatorRetry(t.client.cfg.Retry), func() error {
+		body := protocol.EncodeEndTxn(ver, t.txnID, t.pid.ID, t.pid.Epoch, commit)
+		rb, rerr := t.client.cluster.Request(ctx, t.coordinator, protocol.APIEndTxn, ver, body)
+		if rerr != nil {
+			return rerr
+		}
+		r, derr := protocol.DecodeEndTxn(ver, rb)
+		if derr != nil {
+			return derr
+		}
+		if r.Code != 0 {
+			if protocol.CoordinatorRetriable(r.Code) {
+				t.client.cluster.Invalidate(t.coordinator)
+				if c, e := t.client.cluster.TransactionCoordinator(ctx, t.txnID); e == nil {
+					t.coordinator = c
+				}
+			}
+			return newKafkaError(r.Code, "", 0, "end transaction failed")
+		}
+		res = r
+		return nil
+	})
+	if err != nil {
+		// The transaction outcome is uncertain; drop any cached producer id so the
+		// next BeginTransaction re-initializes a fresh, valid epoch.
+		t.prod.clearTxnPID()
 		return err
 	}
 	t.open = false
+	// KIP-890 TV2: EndTxn v5 returns the server-bumped producer id/epoch. Adopt it
+	// and cache it on the producer so the next transaction reuses it without a
+	// fresh InitProducerID round-trip. Older versions return -1 here.
+	if t.tv2 && res.ProducerID >= 0 && res.ProducerEpoch >= 0 {
+		t.pid = protocol.ProducerID{ID: res.ProducerID, Epoch: res.ProducerEpoch}
+		t.prod.cacheTxnPID(t.pid)
+	} else {
+		t.prod.clearTxnPID()
+	}
 	if !commit {
 		return ErrTransactionAborted
 	}
 	return nil
+}
+
+// ProducerID returns the current transactional producer id and epoch. Across
+// sequential transactions on a TV2 cluster the id stays constant while the epoch
+// increases (the broker bumps it on each EndTxn); useful for diagnostics.
+func (t *TransactionalProducer) ProducerID() (id int64, epoch int16) {
+	return t.pid.ID, t.pid.Epoch
 }

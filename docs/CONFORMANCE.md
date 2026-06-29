@@ -102,7 +102,7 @@ internals), 88/89 Streams groups (KIP-1071).
 | KIP-98 read_committed | Skip aborted-transaction records | ✅ (filters by aborted-txn list) |
 | SCRAM/OAUTHBEARER/GSSAPI | SASL mechanisms | ✅ (GSSAPI = SPNEGO pass-through) |
 | KIP-584 | Feature versioning (cluster-finalized feature levels via ApiVersions) | ➖ (parsed and exposed via `Client.BrokerFeature`; not yet used to gate behavior beyond txn-version detection) |
-| KIP-890 | Transactions v2 (Produce v12, implicit partition add, epoch bump) | ✅ (TV2 produce path: when `transaction.version >= 2`, skips client `AddPartitionsToTxn` — broker registers partitions implicitly on Produce v12; epoch bump handled by per-transaction producer-id re-init. Group-offset registration keeps `AddOffsetsToTxn`, which is not implicit. Falls back to v1 on `transaction.version < 2`.) |
+| KIP-890 | Transactions v2 (Produce v12, implicit partition add, epoch bump) | ✅ (TV2 produce path: when `transaction.version >= 2`, skips client `AddPartitionsToTxn` — broker registers partitions implicitly on Produce v12. EndTxn v5 returns the bumped producer epoch, adopted and reused across sequential transactions (producer id constant, epoch increasing) without re-`InitProducerID`. Group-offset registration keeps `AddOffsetsToTxn`, which is not implicit. Falls back to v1 on `transaction.version < 2`.) |
 | KIP-714 | Client metrics push (telemetry RPCs) | ❌ |
 | KIP-899 / KIP-1102 | Rebootstrap from `bootstrap.servers` / on server signal | ➖ (refresh fails over across configured seeds; no full rebootstrap-on-signal) |
 | KIP-1106 | Duration-based `auto.offset.reset` | ❌ (earliest/latest only) |
@@ -178,7 +178,7 @@ lifecycle management (compatibility checks, config, version listing, deletes).
 ## 5. Prioritized gaps (roadmap)
 
 1. **OffsetForLeaderEpoch (KIP-320)** — leader-epoch *fencing* on Fetch is done; remaining: full *truncation detection* (query OffsetForLeaderEpoch API 23 on leader change) and committed-leader-epoch on offset commit/fetch.
-2. **KIP-890 transactions v2** — TV2 produce path done (implicit partition add on Produce v12, gated on `transaction.version >= 2`); remaining nicety: adopt EndTxn v5 to read the bumped epoch in-place instead of re-initializing the producer id per transaction.
+2. _(KIP-890 transactions v2 complete: implicit partition add on Produce v12 and EndTxn v5 epoch adoption with producer-id reuse across sequential transactions, all gated on `transaction.version >= 2`.)_
 3. **KIP-714 client metrics** — `GetTelemetrySubscriptions` / `PushTelemetry`.
 4. **Newer API revisions** — Fetch v13+ (topic IDs), ShareAcknowledge v2 (`RENEW`), OffsetFetch v8 (batched multi-group). (FindCoordinator flex v3 and OffsetFetch flex v6 done.)
 5. _(Consumer niceties closed: KIP-1106 `WithConsumeSince`, KIP-390 `WithProducerCompressionLevel`, KIP-848 RE2J `ConsumerPattern`.)_

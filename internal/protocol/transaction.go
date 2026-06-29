@@ -15,7 +15,7 @@ const (
 	VerAddOffsetsToTxn  int16 = 3
 	VerTxnOffsetCommit  int16 = 3
 	VerAddPartitionsTxn int16 = 1
-	VerEndTxn           int16 = 2
+	VerEndTxn           int16 = 5
 )
 
 // ProducerID is allocated by InitProducerId for idempotent/transactional produce.
@@ -65,8 +65,11 @@ func DecodeInitProducerID(body []byte) (ProducerID, error) {
 	return ProducerID{ID: id, Epoch: epoch}, nil
 }
 
-func EncodeEndTxn(txnID string, producerID int64, epoch int16, commit bool) []byte {
-	if VerEndTxn >= 3 {
+func EncodeEndTxn(ver int16, txnID string, producerID int64, epoch int16, commit bool) []byte {
+	if ver <= 0 {
+		ver = VerEndTxn
+	}
+	if ver >= 3 {
 		return encodeEndTxnFlex(txnID, producerID, epoch, commit)
 	}
 	return encodeEndTxnLegacy(txnID, producerID, epoch, commit)
@@ -86,47 +89,56 @@ func encodeEndTxnFlex(txnID string, producerID int64, epoch int16, commit bool) 
 	buf.WriteCompactString(txnID)
 	buf.WriteInt64(producerID)
 	buf.WriteInt16(epoch)
-	if commit {
-		buf.WriteInt8(0)
-	} else {
-		buf.WriteInt8(1)
-	}
+	// committed: true = commit, false = abort (encoded as a 1/0 boolean byte).
+	buf.WriteBool(commit)
 	buf.WriteEmptyTagSection()
 	return buf.Bytes()
 }
 
-func DecodeEndTxn(body []byte) (int16, error) {
-	if VerEndTxn >= 3 {
-		return decodeEndTxnFlex(body)
-	}
-	return decodeEndTxnLegacy(body)
+// EndTxnResult is the decoded EndTxn response. ProducerID/ProducerEpoch are the
+// server-bumped values returned by EndTxn v5+ (KIP-890 TV2); for older versions
+// they are -1 (not present in the response).
+type EndTxnResult struct {
+	Code          int16
+	ProducerID    int64
+	ProducerEpoch int16
 }
 
-func decodeEndTxnLegacy(body []byte) (int16, error) {
+// DecodeEndTxn parses the EndTxn response at the given version. v5+ additionally
+// carries the bumped producer id and epoch (after error_code, before the tag
+// section); earlier versions do not, so those fields come back as -1.
+func DecodeEndTxn(version int16, body []byte) (EndTxnResult, error) {
+	if version <= 0 {
+		version = VerEndTxn
+	}
+	res := EndTxnResult{ProducerID: -1, ProducerEpoch: -1}
 	buf := wire.FromBytes(body)
-	if _, err := buf.ReadInt32(); err != nil {
-		return 0, err
+	if _, err := buf.ReadInt32(); err != nil { // throttle_time_ms
+		return res, err
 	}
 	code, err := buf.ReadInt16()
 	if err != nil {
-		return 0, err
+		return res, err
 	}
-	return code, nil
-}
-
-func decodeEndTxnFlex(body []byte) (int16, error) {
-	buf := wire.FromBytes(body)
-	if _, err := buf.ReadInt32(); err != nil {
-		return 0, err
+	res.Code = code
+	if version >= 5 {
+		pid, err := buf.ReadInt64()
+		if err != nil {
+			return res, err
+		}
+		epoch, err := buf.ReadInt16()
+		if err != nil {
+			return res, err
+		}
+		res.ProducerID = pid
+		res.ProducerEpoch = epoch
 	}
-	code, err := buf.ReadInt16()
-	if err != nil {
-		return 0, err
+	if version >= 3 {
+		if err := buf.SkipTagSection(); err != nil {
+			return res, err
+		}
 	}
-	if err := buf.SkipTagSection(); err != nil {
-		return 0, err
-	}
-	return code, nil
+	return res, nil
 }
 
 // TxnTopicPartitions groups partitions to register with a transaction.
