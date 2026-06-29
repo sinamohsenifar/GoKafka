@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.20] - 2026-06-29
+
+### Changed
+
+- **Conformance docs finalized.** `docs/CONFORMANCE.md` now records the modern-feature surface as complete and documents KIP-714 client metrics push as a **deliberate non-goal**: it requires OTLP/protobuf encoding, which conflicts with the stdlib-only, zero-dependency design, and is the one wire format with no practical local correctness oracle. Rich client-side observability (pluggable `MetricsRecorder`, Prometheus, OpenTelemetry, structured `slog`, tracing) is the supported alternative. KIP-584 and the EOS row updated to reflect the v2 transaction work.
+
 ## [0.25.19] - 2026-06-29
 
 ### Added

@@ -74,7 +74,7 @@ the broker at connect time, so a lower client ceiling still interoperates.
 | Key | API | Relevance | Priority |
 |----:|-----|-----------|----------|
 | 23 | OffsetForLeaderEpoch | KIP-320 log-truncation detection (fencing already done: Fetch sends `current_leader_epoch`) | **Medium** (truncation detection on unclean failover) |
-| 71/72 | GetTelemetrySubscriptions / PushTelemetry | KIP-714 client metrics push (broker only advertises if a telemetry reporter is configured) | **Medium** (observability) |
+| 71/72 | GetTelemetrySubscriptions / PushTelemetry | KIP-714 client metrics push — **deliberate non-goal** (see §5) | n/a (stdlib-only constraint) |
 | 50 | DescribeUserScramCredentials | Read SCRAM creds (we implement Alter=51, not Describe) | Low (admin completeness) |
 | 75 | DescribeTopicPartitions | KIP-966 cursor-based metadata for very large clusters | Low (Metadata API 3 still works) |
 | 45/46 | Alter/ListPartitionReassignments | Partition reassignment admin | Low |
@@ -95,15 +95,15 @@ internals), 88/89 Streams groups (KIP-1071).
 |-----|---------|:------:|
 | KIP-848 | Next-gen consumer group protocol (`group.protocol=consumer`) | ✅ |
 | KIP-932 | Share groups / queues (ShareConsumer) | ✅ (Accept/Release/Reject; Renew via ShareAcknowledge v2, KIP-1222) |
-| KIP-98 / KIP-447 | Idempotent producer + transactions / EOS | ✅ (transaction protocol v1) |
+| KIP-98 / KIP-447 | Idempotent producer + transactions / EOS | ✅ (transactions v1 and v2 — see KIP-890) |
 | KIP-345 | Static group membership (`group.instance.id`) | ✅ |
 | KIP-429 | Cooperative incremental rebalance | ✅ (cooperative-sticky) |
 | KIP-896 | Drop pre-2.1 request versions; message format v0/v1 removed | ✅ (only v2 record batches; magic≠2 rejected) |
 | KIP-98 read_committed | Skip aborted-transaction records | ✅ (filters by aborted-txn list) |
 | SCRAM/OAUTHBEARER/GSSAPI | SASL mechanisms | ✅ (GSSAPI = SPNEGO pass-through) |
-| KIP-584 | Feature versioning (cluster-finalized feature levels via ApiVersions) | ➖ (parsed and exposed via `Client.BrokerFeature`; not yet used to gate behavior beyond txn-version detection) |
+| KIP-584 | Feature versioning (cluster-finalized feature levels via ApiVersions) | ✅ (parsed and exposed via `Client.BrokerFeature`; `transaction.version` gates the KIP-890 TV2 path) |
 | KIP-890 | Transactions v2 (Produce v12, implicit partition add, epoch bump) | ✅ (TV2 produce path: when `transaction.version >= 2`, skips client `AddPartitionsToTxn` — broker registers partitions implicitly on Produce v12. EndTxn v5 returns the bumped producer epoch, adopted and reused across sequential transactions (producer id constant, epoch increasing) without re-`InitProducerID`. Group-offset registration keeps `AddOffsetsToTxn`, which is not implicit. Falls back to v1 on `transaction.version < 2`.) |
-| KIP-714 | Client metrics push (telemetry RPCs) | ❌ |
+| KIP-714 | Client metrics push (telemetry RPCs) | ➖ (deliberate non-goal — requires OTLP/protobuf encoding, which conflicts with the stdlib-only, zero-dependency design; rich client-side observability is provided instead, see §5) |
 | KIP-899 / KIP-1102 | Rebootstrap from `bootstrap.servers` / on server signal | ➖ (refresh fails over across configured seeds; no full rebootstrap-on-signal) |
 | KIP-1106 | Duration-based `auto.offset.reset` | ❌ (earliest/latest only) |
 | KIP-390 | Configurable producer compression level | ➖ (`WithProducerCompressionLevel` honored for gzip; pure-Go snappy/lz4/zstd are fixed-strategy and ignore it) |
@@ -178,12 +178,12 @@ lifecycle management (compatibility checks, config, version listing, deletes).
 
 ## 5. Prioritized gaps (roadmap)
 
-1. **OffsetForLeaderEpoch (KIP-320)** — leader-epoch *fencing* on Fetch is done; remaining: full *truncation detection* (query OffsetForLeaderEpoch API 23 on leader change) and committed-leader-epoch on offset commit/fetch.
-2. _(KIP-890 transactions v2 complete: implicit partition add on Produce v12 and EndTxn v5 epoch adoption with producer-id reuse across sequential transactions, all gated on `transaction.version >= 2`.)_
-3. **KIP-714 client metrics** — `GetTelemetrySubscriptions` / `PushTelemetry`.
-4. _(Newer API revisions done: Fetch v13 topic-ids, OffsetFetch v8 multi-group, ShareAcknowledge v2 Renew, FindCoordinator flex v3, Produce v12, EndTxn v5.)_
-5. _(Consumer niceties closed: KIP-1106 `WithConsumeSince`, KIP-390 `WithProducerCompressionLevel`, KIP-848 RE2J `ConsumerPattern`.)_
-6. _(Schema Registry lifecycle complete: register/get, compatibility, config, versions, delete, `IsRegistered`, `Mode`/`SetMode`.)_
+The modern-feature surface is complete. The remaining items are one optional robustness follow-up and one deliberate, constraint-driven non-goal:
+
+1. **OffsetForLeaderEpoch (KIP-320)** — *optional follow-up.* Leader-epoch *fencing* on Fetch is done; the remaining piece is full *truncation detection* (query OffsetForLeaderEpoch API 23 on leader change) and committed-leader-epoch on offset commit/fetch — a robustness improvement for unclean failover, not a feature gap.
+2. **KIP-714 client metrics push** — *deliberate non-goal.* `GetTelemetrySubscriptions` / `PushTelemetry` require encoding metrics as **OTLP/protobuf**, which conflicts with this client's hard **stdlib-only, zero-dependency** design (no protobuf codegen). It is also the one wire format with no practical local correctness oracle (a broker accepts a telemetry push without validating its OTLP semantics), so a hand-rolled encoder could not be verified to the standard every other codec here was. Instead, GoKafka ships rich **client-side** observability — pluggable `MetricsRecorder`, Prometheus, and OpenTelemetry bridges, structured `slog`, and tracing hooks — which covers the same operational need without broker-push telemetry.
+
+_Closed this line of work:_ KIP-890 transactions v2 (Produce v12 implicit partition-add + EndTxn v5 epoch reuse), Fetch v13 topic-ids (KIP-516), OffsetFetch v8 multi-group (KIP-709), ShareAcknowledge v2 Renew (KIP-1222), FindCoordinator flex v3, cluster feature negotiation (KIP-584), Schema Registry lifecycle (incl. `IsRegistered`, `Mode`/`SetMode`), and the consumer niceties (KIP-1106, KIP-390, KIP-848 RE2J).
 
 ---
 
