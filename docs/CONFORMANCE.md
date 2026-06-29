@@ -205,8 +205,11 @@ correctness bugs and how GoKafka guards against each.
 | 11 | Record loss on auto-commit / unclean shutdown | Commit advances only acked records; partial commit doesn't advance uncommitted | ✅ |
 | 12 | Large-message handling | Per-partition broker error code surfaced as typed `*KafkaError` (e.g. `MESSAGE_TOO_LARGE`) | ✅ |
 
-GoKafka already has regression tests for several of these (read_committed aborted
-filtering, leader-epoch failover, seed failover, coordinator startup retries).
-Items marked "test recommended" are guarded by design but lack a dedicated test.
+GoKafka has regression tests for these: read_committed aborted filtering,
+leader-epoch failover, seed failover, coordinator startup retries, and a
+dedicated retry/error-classification suite (`errors_test.go`) that locks in
+retriable-error and transport-failure handling (covers #2/#4/#5/#6/#7/#8/#10).
+The only remaining "test recommended" follow-ups are integration tests for
+buffered-record drop on rebalance (#3) and a connection-leak failover loop (#10).
 
 _Generated from a verification pass against Apache Kafka 4.3, Confluent Schema Registry docs, and a cross-library GitHub-issue audit._

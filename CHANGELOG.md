@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.7] - 2026-06-29
+
+### Added
+
+- **Retry/error-classification regression suite** (`errors_test.go`) — deterministic unit tests locking in the hardening guards surfaced by the cross-library issue audit: retriable broker-error codes (incl. `CONCURRENT_TRANSACTIONS`, idempotent-reset codes), transport-failure retriability (`io.EOF`, `net.Error`, `net.ErrClosed`, wrapped), `errors.As`-based `AsKafkaError` unwrapping, and the patient coordinator/leader retry policy.
+
 ## [0.25.6] - 2026-06-29
 
 ### Added
