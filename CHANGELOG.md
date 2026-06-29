@@ -57,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`Admin.ListTransactions` / `Admin.DescribeTransactions`** (APIs 66/65, KIP-664) — list ongoing transactions across all brokers and describe a transactional id's state (producer id/epoch, timeout, start time, enrolled partitions), routing each describe to that id's transaction coordinator.
 - **GROUP config resource (type 32)** — `IncrementalAlterConfigsRequest` can target group configs (`protocol.ConfigResourceGroup`), used to set `share.auto.offset.reset` for share groups.
 
+### Added (observability)
+
+- **`WithSlogLoggerFrom(*slog.Logger)` and `WithSlogHandler(slog.Handler)`** — route GoKafka logs into an application's existing `log/slog` setup (its handler, base attributes, and level), the idiomatic way to integrate logging. Complements the existing `WithLogger`, `WithTracer`, `WithMetricsHook`, Prometheus, and OpenTelemetry bridges.
+
 ### Changed (compatibility)
 
 - **`HashPartitioner` now uses Kafka's murmur2** (matching the Java `DefaultPartitioner` and librdkafka) instead of FNV-1a. Key-based routing is now interoperable across mixed-client fleets — the same key lands on the same partition whether produced by GoKafka, the Java client, or librdkafka. **This changes which partition existing keys map to**; if you relied on the previous FNV distribution, pin records with an explicit `Partition`. Verified against Apache Kafka's canonical murmur2 test vectors.
