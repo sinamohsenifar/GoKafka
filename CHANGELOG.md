@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.24] - 2026-06-29
+
+### Changed
+
+- **Clearer TLS-misconfiguration error.** Connecting in plaintext to a TLS-only broker makes the broker drop the connection during the first request, which previously surfaced as an opaque `EOF` (a footgun kafka-go documents). When no TLS is configured and the bootstrap fails with EOF, the error now appends a hint to configure `WithSecurity` with TLS. The original error is preserved (still `errors.Is(err, io.EOF)`).
+
 ## [0.25.23] - 2026-06-29
 
 ### Added
