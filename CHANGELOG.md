@@ -51,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`Admin.DeleteRecords`** (API 21) — delete records before a given offset per partition (use -1 for the high watermark); requests are routed to each partition leader and per-partition results report the new low watermark.
 - **`Admin.ElectLeaders`** (API 43) — trigger preferred or unclean leader election for specific partitions or the whole cluster, with per-partition results.
+- **`Admin.UpsertUserScramCredential` / `Admin.DeleteUserScramCredential`** (API 51, KIP-554) — manage SCRAM-SHA-256/512 user credentials; the salt is generated locally and the salted password derived with PBKDF2 so the plaintext password never leaves the client.
+- **`Admin.DescribeLogDirs`** (API 35) — per-broker log-directory storage usage (size, offset lag, total/usable bytes per partition).
 - **GROUP config resource (type 32)** — `IncrementalAlterConfigsRequest` can target group configs (`protocol.ConfigResourceGroup`), used to set `share.auto.offset.reset` for share groups.
 
 ### Changed (compatibility)
