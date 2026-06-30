@@ -5,6 +5,7 @@ package gokafka_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -86,6 +87,44 @@ func pollUntil(t *testing.T, ctx context.Context, share *gokafka.ShareConsumer, 
 		}
 	}
 	return got
+}
+
+// TestIntegrationShareUnsupportedBrokerClearError: on a broker without KIP-932
+// (no share.version, or Redpanda), a ShareConsumer must surface a clear
+// "does not support share groups" error instead of an opaque heartbeat failure
+// or connection reset deep inside Poll.
+func TestIntegrationShareUnsupportedBrokerClearError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	brokers := integrationBrokers(t)
+
+	probeCfg, _ := gokafka.NewConfig(brokers)
+	probe, err := gokafka.NewClient(probeCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := probe.NegotiatedAPIVersion(protocol.APIShareGroupHeartbeat); ok && v >= 1 {
+		probe.Close()
+		t.Skip("broker supports KIP-932; this test covers the unsupported-broker guard")
+	}
+	probe.Close()
+
+	cfg, err := gokafka.NewConfig(brokers, gokafka.WithShareGroup("gokafka-unsupported-grp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := gokafka.NewClient(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	share := c.ShareConsumer([]string{"gokafka-unsupported-topic"})
+	if _, err := share.Poll(ctx); err == nil {
+		t.Fatal("expected a clear unsupported-share-groups error, got nil")
+	} else if !strings.Contains(err.Error(), "share group") {
+		t.Fatalf("error should clearly mention share groups, got: %v", err)
+	}
 }
 
 // TestIntegrationShareReleaseRedelivers: a Released record returns to the group
