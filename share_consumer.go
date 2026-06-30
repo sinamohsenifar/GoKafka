@@ -3,6 +3,7 @@ package gokafka
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -471,7 +472,19 @@ func (s *ShareConsumer) acknowledge(ctx context.Context, ackType protocol.ShareA
 	memberID := s.memberID
 	s.mu.Unlock()
 
-	byBroker := map[int32][]protocol.ShareFetchPartition{}
+	// Group the records by broker → topic-partition, then coalesce each
+	// partition's offsets into the fewest contiguous [first,last] ranges, instead
+	// of emitting one single-offset ack batch (and a duplicate partition entry)
+	// per record.
+	type tpKey struct {
+		topic     string
+		partition int32
+	}
+	type partAcks struct {
+		topicID wire.UUID
+		offsets []int64
+	}
+	grouped := map[int32]map[tpKey]*partAcks{}
 	for _, r := range records {
 		id, ok := s.client.cluster.TopicIDByName(r.Topic)
 		if !ok {
@@ -481,12 +494,27 @@ func (s *ShareConsumer) acknowledge(ctx context.Context, ackType protocol.ShareA
 		if err != nil {
 			return err
 		}
-		byBroker[leader.NodeID] = append(byBroker[leader.NodeID], protocol.ShareFetchPartition{
-			TopicID: id, Partition: r.Partition,
-			AckBatches: []protocol.ShareAckBatch{{
-				FirstOffset: r.Offset, LastOffset: r.Offset, Type: ackType,
-			}},
-		})
+		parts := grouped[leader.NodeID]
+		if parts == nil {
+			parts = map[tpKey]*partAcks{}
+			grouped[leader.NodeID] = parts
+		}
+		k := tpKey{r.Topic, r.Partition}
+		pa := parts[k]
+		if pa == nil {
+			pa = &partAcks{topicID: id}
+			parts[k] = pa
+		}
+		pa.offsets = append(pa.offsets, r.Offset)
+	}
+	byBroker := map[int32][]protocol.ShareFetchPartition{}
+	for broker, parts := range grouped {
+		for k, pa := range parts {
+			byBroker[broker] = append(byBroker[broker], protocol.ShareFetchPartition{
+				TopicID: pa.topicID, Partition: k.partition,
+				AckBatches: coalesceAckBatches(pa.offsets, ackType),
+			})
+		}
 	}
 
 	ver := s.client.cluster.NegotiatedVersion(protocol.APIShareAcknowledge, protocol.VerShareAcknowledge)
@@ -514,6 +542,28 @@ func (s *ShareConsumer) acknowledge(ctx context.Context, ackType protocol.ShareA
 		s.clearPending(records)
 	}
 	return nil
+}
+
+// coalesceAckBatches sorts the offsets and merges contiguous (and duplicate) ones
+// into the fewest [first,last] ShareAckBatch ranges of the given ack type — the
+// compact form the broker uses for acquired offset ranges. All offsets in a
+// single acknowledge call share one ack type, so coalescing is always safe.
+func coalesceAckBatches(offsets []int64, ackType protocol.ShareAckType) []protocol.ShareAckBatch {
+	if len(offsets) == 0 {
+		return nil
+	}
+	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
+	out := make([]protocol.ShareAckBatch, 0, 1)
+	first, last := offsets[0], offsets[0]
+	for _, o := range offsets[1:] {
+		if o == last || o == last+1 { // duplicate or contiguous → extend the range
+			last = o
+			continue
+		}
+		out = append(out, protocol.ShareAckBatch{FirstOffset: first, LastOffset: last, Type: ackType})
+		first, last = o, o
+	}
+	return append(out, protocol.ShareAckBatch{FirstOffset: first, LastOffset: last, Type: ackType})
 }
 
 func (s *ShareConsumer) sendShareHeartbeat(ctx context.Context, coord int32, req protocol.ShareGroupHeartbeatRequest) (protocol.ShareGroupHeartbeatResponse, error) {

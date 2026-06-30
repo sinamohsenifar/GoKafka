@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.14] - 2026-06-30
+
+### Changed
+
+- **Share groups (KIP-932): coalesce acknowledgements into offset ranges.** `Acknowledge`/`Release`/`Reject`/`Renew` previously emitted one single-offset `ShareAckBatch` — and a duplicate partition entry — per record. They now group records by partition and merge contiguous (and duplicate) offsets into the fewest `[first,last]` ranges, the compact form the broker uses for acquired ranges. Acknowledging a full poll batch of N contiguous records now sends one range instead of N batches. The range-coalescing logic is unit-tested.
+
 ## [0.26.13] - 2026-06-30
 
 ### Added
