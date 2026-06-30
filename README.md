@@ -58,6 +58,7 @@ Several mature Kafka clients exist for Go. They differ mainly in dependencies, d
 | **Cross-client partitioners (murmur2 + CRC32)** | Yes | Yes | Yes | murmur2 | Yes |
 | **Consumer-group lag helper** | Yes | Yes (kadm) | Manual | Manual | Manual |
 | **In-memory test mocks** | Broker (`kfake`) + Schema Registry | Yes (kfake) | No | Yes (mocks) | Yes (mock client) |
+| **Client-side field encryption (CSFLE)** | Yes (pure-Go AES-GCM + pluggable KMS) | No | No | No | Yes (KMS plugins) |
 
 **When GoKafka fits well**
 
