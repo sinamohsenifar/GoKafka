@@ -74,7 +74,7 @@ func EncodeShareAcknowledgeRequest(ver int16, req ShareAcknowledgeRequest) []byt
 // mirrors ShareFetch (Responses[]→Partitions[]) — verified against a real broker
 // response in the unit test. Per-topic structure: topic_id, partitions; each
 // partition: index, error_code, error_message, current_leader{id,epoch,tag}, tag.
-func DecodeShareAcknowledgeResponse(body []byte) (int16, error) {
+func DecodeShareAcknowledgeResponse(ver int16, body []byte) (int16, error) {
 	buf := wire.FromBytes(body)
 	if _, err := buf.ReadInt32(); err != nil { // throttle_time_ms
 		return 0, err
@@ -85,6 +85,11 @@ func DecodeShareAcknowledgeResponse(body []byte) (int16, error) {
 	}
 	if _, err := buf.ReadCompactNullableString(); err != nil { // error_message
 		return topErr, err
+	}
+	if ver >= 2 {
+		if _, err := buf.ReadInt32(); err != nil { // acquisition_lock_timeout_ms (v2+, KIP-1222)
+			return topErr, err
+		}
 	}
 	if topErr != 0 {
 		return topErr, apiError("share acknowledge", topErr)

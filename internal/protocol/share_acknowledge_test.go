@@ -16,9 +16,28 @@ func TestDecodeShareAcknowledgeResponse_RealBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := DecodeShareAcknowledgeResponse(raw)
+	code, err := DecodeShareAcknowledgeResponse(1, raw)
 	if err != nil || code != 0 {
-		t.Fatalf("real success response should decode cleanly: code=%d err=%v", code, err)
+		t.Fatalf("real v1 success response should decode cleanly: code=%d err=%v", code, err)
+	}
+}
+
+// v2 (KIP-1222) inserts AcquisitionLockTimeoutMs (int32) right after error_message.
+// Synthesize it from the captured v1 body and confirm the version-aware decoder
+// handles it (this is the layout the Kafka 4.3+ brokers return — the v2 regression).
+func TestDecodeShareAcknowledgeResponse_V2(t *testing.T) {
+	v1, _ := hex.DecodeString(realShareAckV1)
+	// error_message (null, 1 byte) ends at offset 7; insert 4-byte lock timeout there.
+	v2 := append([]byte{}, v1[:7]...)
+	v2 = append(v2, 0x00, 0x00, 0x75, 0x30) // acquisition_lock_timeout_ms = 30000
+	v2 = append(v2, v1[7:]...)
+	code, err := DecodeShareAcknowledgeResponse(2, v2)
+	if err != nil || code != 0 {
+		t.Fatalf("v2 response should decode cleanly: code=%d err=%v", code, err)
+	}
+	// Decoding v2 bytes as v1 must fail (proves the version field matters).
+	if _, err := DecodeShareAcknowledgeResponse(1, v2); err == nil {
+		t.Fatal("v2 bytes decoded as v1 should not silently succeed")
 	}
 }
 
@@ -29,7 +48,7 @@ func TestDecodeShareAcknowledgeResponse_RealBytes(t *testing.T) {
 func TestDecodeShareAcknowledgeResponse_PartitionError(t *testing.T) {
 	raw, _ := hex.DecodeString(realShareAckV1)
 	raw[29], raw[30] = 0x00, 0x24 // partition error_code = 36
-	code, err := DecodeShareAcknowledgeResponse(raw)
+	code, err := DecodeShareAcknowledgeResponse(1, raw)
 	if err == nil {
 		t.Fatal("per-partition ack error must be surfaced, not reported as success")
 	}
@@ -42,7 +61,7 @@ func TestDecodeShareAcknowledgeResponse_PartitionError(t *testing.T) {
 func TestDecodeShareAcknowledgeResponse_TopLevelError(t *testing.T) {
 	raw, _ := hex.DecodeString(realShareAckV1)
 	raw[4], raw[5] = 0x00, 0x23 // top error_code = 35 (UNSUPPORTED_VERSION)
-	code, err := DecodeShareAcknowledgeResponse(raw)
+	code, err := DecodeShareAcknowledgeResponse(1, raw)
 	if err == nil || code != 35 {
 		t.Fatalf("top-level error should surface: code=%d err=%v", code, err)
 	}

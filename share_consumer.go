@@ -381,7 +381,7 @@ func (s *ShareConsumer) acknowledge(ctx context.Context, ackType protocol.ShareA
 		if err != nil {
 			return err
 		}
-		if _, err := protocol.DecodeShareAcknowledgeResponse(rb); err != nil {
+		if _, err := protocol.DecodeShareAcknowledgeResponse(ver, rb); err != nil {
 			return err
 		}
 		s.mu.Lock()
