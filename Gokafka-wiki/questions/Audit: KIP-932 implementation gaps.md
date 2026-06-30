@@ -36,7 +36,9 @@ GoKafka's share-group (KIP-932) implementation audited against the [[Research: K
 - No decode/round-trip unit tests for any share response; Poll-retry, session-error (122/123), rejoin/heartbeat/failover untested.
 
 ### LOW
-- ShareAcknowledge decode loses `error_message`; ShareFetch piggyback ack diagnostics discarded; `AcquisitionLockTimeoutMs` never surfaced; no Admin for the share-offset RPCs (~85/86/87/90); acks not coalesced into ranges; Renew v-gate uses non-zero fallback; `Run` untested.
+- ✅ **FIXED (v0.26.14)** — acks not coalesced into ranges → `acknowledge` now groups by partition and coalesces contiguous/duplicate offsets into the fewest `[first,last]` ranges (`coalesceAckBatches`, unit-tested).
+- ✅ **PARTLY FIXED (v0.26.15)** — Admin for the share-offset RPCs → `Admin.DescribeShareGroupOffsets` (API 90, flexible v0; codec verbatim from the Apache 4.1 schema; share-lane CI). The Alter/Delete share-group-offset variants remain unimplemented (niche ops).
+- Remaining: ShareAcknowledge decode loses `error_message`; ShareFetch piggyback ack diagnostics discarded; `AcquisitionLockTimeoutMs` never surfaced; Renew v-gate uses non-zero fallback; `Run` untested.
 
 ## Not gaps (verified — do not re-file)
 `Poll` is the deliberate public verb (no `Fetch` alias); read_committed handling is correct (server-side filtering); multi-consumer-per-partition is broker-enforced; server-side share-coordinator/`__share_group_state` machinery correctly not client-side; lock-duration/delivery-limit/max-locks correctly not client-sent.
