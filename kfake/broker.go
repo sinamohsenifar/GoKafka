@@ -59,7 +59,15 @@ type Broker struct {
 // NewBroker starts a mock broker on a loopback port and returns it. Call Close
 // when done.
 func NewBroker() (*Broker, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	return NewBrokerAt("127.0.0.1:0")
+}
+
+// NewBrokerAt starts a mock broker bound to a specific host:port. Use it to test
+// client rebootstrap: bring up a replacement broker at the same bootstrap
+// address a closed broker used (a port freed by a prior Close may briefly linger,
+// so retry the bind).
+func NewBrokerAt(addr string) (*Broker, error) {
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
