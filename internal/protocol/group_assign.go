@@ -26,7 +26,7 @@ func DecodeConsumerSubscription(_ int16, raw []byte) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	topics := make([]string, 0, nTopics)
+	topics := make([]string, 0, safePrealloc(int(nTopics)))
 	for i := int32(0); i < nTopics; i++ {
 		t, err := buf.ReadString()
 		if err != nil {
