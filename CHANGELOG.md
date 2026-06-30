@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.4] - 2026-06-30
+
+### Changed
+
+- **`Admin.DescribeLogDirs` returns partial results on per-broker failure** (franz-go "shard errors" model). It fans out across brokers; previously one unreachable or erroring broker failed the entire call. Now each broker's failure is attached to a per-broker `LogDir{BrokerID, Err}` entry and the reachable brokers' results are still returned; the call errors only if **every** broker failed. Inspect `LogDir.Err` per entry.
+
 ## [0.26.3] - 2026-06-30
 
 ### Added

@@ -149,19 +149,33 @@ func (a *Admin) DescribeLogDirs(ctx context.Context, topics map[string][]int32, 
 	}
 	body := protocol.EncodeDescribeLogDirsRequest(ver, topics)
 
+	// Fan out across brokers. A single unreachable or erroring broker must not
+	// fail the whole query (franz-go's "shard errors" model): its failure is
+	// attached to a per-broker LogDir entry and the rest are still returned. The
+	// call errors only if every broker failed.
 	var out []LogDir
+	var lastErr error
+	succeeded := 0
 	for _, node := range targets {
 		resp, err := a.client.cluster.Request(ctx, node, protocol.APIDescribeLogDirs, ver, body)
 		if err != nil {
-			return nil, err
+			out = append(out, LogDir{BrokerID: node, Err: err})
+			lastErr = err
+			continue
 		}
 		topErr, results, err := protocol.DecodeDescribeLogDirsResponse(ver, resp)
 		if err != nil {
-			return nil, err
+			out = append(out, LogDir{BrokerID: node, Err: err})
+			lastErr = err
+			continue
 		}
 		if topErr != 0 {
-			return nil, newKafkaError(topErr, "", 0, "describe log dirs failed")
+			ke := newKafkaError(topErr, "", 0, "describe log dirs failed")
+			out = append(out, LogDir{BrokerID: node, Err: ke})
+			lastErr = ke
+			continue
 		}
+		succeeded++
 		for _, r := range results {
 			ld := LogDir{
 				BrokerID: node, Path: r.LogDir,
@@ -178,6 +192,9 @@ func (a *Admin) DescribeLogDirs(ctx context.Context, topics map[string][]int32, 
 			}
 			out = append(out, ld)
 		}
+	}
+	if succeeded == 0 && lastErr != nil {
+		return out, lastErr // every broker failed
 	}
 	return out, nil
 }
