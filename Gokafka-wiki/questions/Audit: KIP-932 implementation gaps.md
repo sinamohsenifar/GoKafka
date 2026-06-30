@@ -37,8 +37,8 @@ GoKafka's share-group (KIP-932) implementation audited against the [[Research: K
 
 ### LOW
 - ✅ **FIXED (v0.26.14)** — acks not coalesced into ranges → `acknowledge` now groups by partition and coalesces contiguous/duplicate offsets into the fewest `[first,last]` ranges (`coalesceAckBatches`, unit-tested).
-- ✅ **PARTLY FIXED (v0.26.15)** — Admin for the share-offset RPCs → `Admin.DescribeShareGroupOffsets` (API 90, flexible v0; codec verbatim from the Apache 4.1 schema; share-lane CI). The Alter/Delete share-group-offset variants remain unimplemented (niche ops).
-- Remaining: ShareAcknowledge decode loses `error_message`; ShareFetch piggyback ack diagnostics discarded; `AcquisitionLockTimeoutMs` never surfaced; Renew v-gate uses non-zero fallback; `Run` untested.
+- ✅ **FIXED (v0.26.15–16)** — Admin for the share-offset RPCs → the full trio: `Admin.DescribeShareGroupOffsets` (API 90, v0.26.15), `Admin.AlterShareGroupOffsets` (API 91) and `Admin.DeleteShareGroupOffsets` (API 92, v0.26.16). New flexible-v0 codecs, wire layouts verbatim from the Apache 4.1 schemas, verified end-to-end against a real broker (describe/alter→reset/delete) + share-lane CI.
+- Remaining (very low value, deferred): piggyback acks on ShareFetch; ShareAcknowledge decode loses `error_message`; `AcquisitionLockTimeoutMs` never surfaced; Renew v-gate uses non-zero fallback; `Run` untested; more share-response decode unit tests.
 
 ## Not gaps (verified — do not re-file)
 `Poll` is the deliberate public verb (no `Fetch` alias); read_committed handling is correct (server-side filtering); multi-consumer-per-partition is broker-enforced; server-side share-coordinator/`__share_group_state` machinery correctly not client-side; lock-duration/delivery-limit/max-locks correctly not client-sent.
