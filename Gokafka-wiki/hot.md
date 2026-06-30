@@ -18,22 +18,20 @@ Quick-reference of what's most active in the vault. Newest at top.
 - **Boundary (by design):** no Protobuf *message* codec — `EncodeProtobuf` wraps pre-encoded bytes (BYO `google.golang.org/protobuf`); a real codec is third-party → violates [[decisions/adr-stdlib-only|stdlib-only]].
 - **Real gaps (stdlib-fixable):** schema **references** (multi-file `.proto` imports) not sent; **no e2e Protobuf integration test**; Protobuf decode lacks the schema-id guards Avro has. → being fixed.
 
-## Latest research
-**[[Research: KIP-932 share groups (Queues for Kafka)]]** (2026-06-30)
-- Queue semantics: many consumers per partition; **per-record** 30s acquisition lock with **Accept/Release/Reject/Renew** + delivery-count limit (default 5) → at-least-once with redelivery.
-- Client RPCs ShareGroupHeartbeat/ShareFetch/ShareAcknowledge; server state in `__share_group_state` via a Share Coordinator. **GA Kafka 4.2.**
-- **GoKafka** ships the client side (APIs 76–79, Renew via ShareAck v2). Concepts: [[concepts/share-group-acquisition-lock]] · [[concepts/share-coordinator-state]]
+## Latest research — frontier (2026-06-30)
+- **[[Research: KIP-932 share-group configuration & remaining client surface]]** — `share.*` group configs altered via IncrementalAlterConfigs on the GROUP resource (type 32). GoKafka gaps: no alter-group-config admin API (only hardcoded `share.auto.offset.reset=earliest`), `delivery_count` decoded-then-dropped (`internal/protocol/share_fetch.go:197`), default ack mode explicit vs Java's implicit.
+- **[[Research: KIP-848 client-side assignors & rack-aware assignment]]** — client-side assignors still unimplemented upstream (KAFKA-18327 Open); rack-aware is broker-side; both **non-goals** for GoKafka's thin client.
+- **[[Research: Redpanda next-gen group & share-group roadmap]]** — Redpanda supports neither KIP-848 nor KIP-932; no announced ETA (issue #29223). GoKafka's auto-skip is correct.
+- **[[Research: Apache Kafka 4.x roadmap & upcoming KIPs]]** — all client-facing 4.0–4.2 features already shipped; KIP-1150 diskless / KIP-966 ELR are broker-internal non-goals; client-side candidates: KIP-1102 rebootstrap, KIP-1191 DLQ. KIP-1274 (4.3) deprecates classic JoinGroup → validates the KIP-848 investment.
 
-**[[Research: KIP-848 next-gen consumer rebalance protocol]]** (2026-06-30)
-- Server-driven, **incremental** rebalance replacing JoinGroup/SyncGroup; one `ConsumerGroupHeartbeat` RPC; **GA in Kafka 4.0**, opt-in `group.protocol=consumer`.
-- Convergence via three epochs (group/assignment/member); assignment is **server-side by default** (`uniform`/`range`); client-side assignors not yet implemented.
-- **GoKafka** already ships the client side (API 68/69, RE2J regex, server-side assignment); [[compatibility/redpanda|Redpanda]] doesn't support it yet.
-- Concepts: [[concepts/consumergroupheartbeat]] · [[concepts/epoch-reconciliation]] · [[concepts/server-side-assignor]]
+Foundational deep-dives: [[Research: KIP-932 share groups (Queues for Kafka)]] · [[Research: KIP-848 next-gen consumer rebalance protocol]]
 
 ## Entry points
 - [[index]] — Map of Content (by category) · [[Dashboard]] — 📊 analytics & status · [[meta/taxonomy|Taxonomy]] · [[repo-docs]] — repo↔wiki bridge
 
 ## Open questions (from research)
-- Quantified rebalance-time gains (no authoritative numbers found).
-- Client-side assignor + rack-aware timelines (KAFKA-18327 / KAFKA-17747).
-- Redpanda ConsumerGroupHeartbeat support ETA.
+- ~~Quantified rebalance-time gains~~ → ~20x in one disclosed benchmark (100→1000 partitions, 10 consumers): 103s → 5s. See [[Research: KIP-848 client-side assignors & rack-aware assignment]].
+- ~~Client-side assignor + rack-aware timelines~~ → client-side assignors still unimplemented (KAFKA-18327, Open); rack-aware *trigger* (KIP-1101/KAFKA-17747) back in Kafka 4.1; both non-goals for GoKafka.
+- Does GoKafka's heartbeat send a `client.rack` id for future broker rack-aware assignment? (needs code check)
+- ~~Redpanda ConsumerGroupHeartbeat / share-group ETA~~ → none announced; Redpanda supports neither (issue #29223). See [[Research: Redpanda next-gen group & share-group roadmap]].
+- New: does GoKafka's rebootstrap behaviour match KIP-1102? (needs code check) · should `delivery_count` be surfaced on `Record`? (KIP-932 gap)

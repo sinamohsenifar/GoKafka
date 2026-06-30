@@ -5,20 +5,20 @@ formulas:
   edited_days: (now() - file.mtime).days.round(0)
 properties:
   category:
-    displayName: "Category"
+    displayName: Category
   subcategory:
-    displayName: "Sub-category"
+    displayName: Sub-category
   type:
-    displayName: "Type"
+    displayName: Type
   status:
-    displayName: "Status"
+    displayName: Status
   updated:
-    displayName: "Updated"
+    displayName: Updated
   formula.edited_days:
-    displayName: "Edited (days ago)"
+    displayName: Edited (days ago)
 views:
   - type: table
-    name: "All pages by category"
+    name: All pages by category
     groupBy:
       property: category
       direction: ASC
@@ -28,8 +28,11 @@ views:
       - type
       - status
       - updated
+    sort:
+      - property: status
+        direction: ASC
   - type: table
-    name: "By type"
+    name: By type
     groupBy:
       property: type
       direction: ASC
@@ -39,7 +42,7 @@ views:
       - status
       - formula.edited_days
   - type: cards
-    name: "Gallery"
+    name: Gallery
     order:
       - file.name
       - category

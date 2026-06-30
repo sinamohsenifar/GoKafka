@@ -48,9 +48,10 @@ A knowledge map of **GoKafka** — a pure-Go (stdlib-only, no CGO) Apache Kafka 
 - **KIP-932:** [[concepts/share-group-acquisition-lock|Acquisition lock]] · [[concepts/share-coordinator-state|Share coordinator state]]
 
 ## 🔬 Research & audits
-- **Syntheses:** [[Research: KIP-848 next-gen consumer rebalance protocol|KIP-848 deep dive]] · [[Research: KIP-932 share groups (Queues for Kafka)|KIP-932 deep dive]]
+- **Frontier (2026-06-30):** [[Research: KIP-932 share-group configuration & remaining client surface|KIP-932 configs]] · [[Research: KIP-848 client-side assignors & rack-aware assignment|KIP-848 assignors]] · [[Research: Redpanda next-gen group & share-group roadmap|Redpanda roadmap]] · [[Research: Apache Kafka 4.x roadmap & upcoming KIPs|Kafka 4.x roadmap]]
+- **Deep dives:** [[Research: KIP-848 next-gen consumer rebalance protocol|KIP-848 protocol]] · [[Research: KIP-932 share groups (Queues for Kafka)|KIP-932 queues]]
 - **Code-verified audits:** [[Audit: KIP-932 implementation gaps|KIP-932 gaps]] (HIGH gaps fixed v0.26.8–10) · [[Audit: Protobuf & Schema Registry completeness|Protobuf & SR]] (fixed v0.26.11)
-- **Sources:** [[sources/apache-kip-848|Apache KIP-848]] · [[sources/kafka-docs-rebalance-protocol|Kafka docs]] · [[sources/confluent-kip-848-blog|Confluent KIP-848]] · [[sources/apache-kip-932|Apache KIP-932]] · [[sources/confluent-share-consumer-ga|Confluent share GA]]
+- **Sources:** [[sources/apache-kip-848|Apache KIP-848]] · [[sources/kafka-docs-rebalance-protocol|Kafka docs]] · [[sources/apache-kip-932|Apache KIP-932]] · [[sources/confluent-share-consumer-ga|Confluent share GA]] · [[sources/apache-kip-1150-diskless-topics|KIP-1150 diskless]] · [[sources/kafka-4-2-share-groups-ga|Kafka 4.2 GA]] · [[sources/redpanda-issue-29223-kip848|Redpanda #29223]] · [[sources/apache-kafka-42-group-configs|4.2 group configs]]
 
 ## 🔁 Compatibility
 - [[compatibility/kafka-versions|Kafka 3.9–4.3]] · [[compatibility/redpanda|Redpanda]] · [[compatibility/broker-quirks|Broker quirks & decode bugs]]
