@@ -140,6 +140,14 @@ func APIName(apiKey int16) string {
 		return "DescribeUserScramCredentials"
 	case APIAlterUserScramCreds:
 		return "AlterUserScramCredentials"
+	case APIShareGroupHeartbeat:
+		return "ShareGroupHeartbeat"
+	case APIShareGroupDescribe:
+		return "ShareGroupDescribe"
+	case APIShareFetch:
+		return "ShareFetch"
+	case APIShareAcknowledge:
+		return "ShareAcknowledge"
 	default:
 		return fmt.Sprintf("API%d", apiKey)
 	}

@@ -42,6 +42,29 @@ type ShareConsumer struct {
 // ackMode reports the configured share acknowledgement mode.
 func (s *ShareConsumer) ackMode() ShareAckMode { return s.client.cfg.Consumer.ShareAckMode }
 
+// requireShareSupport returns a clear error when the broker can't run KIP-932
+// share groups, instead of letting an opaque heartbeat error (UNSUPPORTED_VERSION)
+// or a connection reset surface deep inside Poll. It mirrors Admin's
+// unsupported-API guard and only rejects when the broker positively lacks
+// support: a broker that advertised its APIs without ShareGroupHeartbeat (e.g.
+// Redpanda), or that advertises it only at v0 (share.version disabled). When
+// versions haven't been negotiated yet it falls through and lets the request try.
+func (s *ShareConsumer) requireShareSupport() error {
+	cl := s.client.cluster
+	if !cl.AdvertisesAPI(protocol.APIShareGroupHeartbeat) {
+		return errShareUnsupported() // APIs known and this isn't one
+	}
+	if cl.NegotiatedVersion(protocol.APIShareGroupHeartbeat, -1) == 0 {
+		return errShareUnsupported() // advertised at v0 → share.version disabled
+	}
+	return nil
+}
+
+func errShareUnsupported() error {
+	return fmt.Errorf("gokafka: broker does not support KIP-932 share groups (%s); requires Apache Kafka 4.1+ with share.version >= 1",
+		protocol.APIName(protocol.APIShareGroupHeartbeat))
+}
+
 // trackDelivered records the batch returned by Poll for later implicit
 // auto-acceptance. No-op in explicit mode.
 func (s *ShareConsumer) trackDelivered(recs []Record) {
@@ -104,6 +127,10 @@ func (s *ShareConsumer) Poll(ctx context.Context) ([]Record, error) {
 	}
 	if s.client.cfg.ShareGroup == "" {
 		return nil, ErrNoShareGroup
+	}
+	if err := s.requireShareSupport(); err != nil {
+		s.client.observe.Metrics.OnConsume(0, err)
+		return nil, err
 	}
 	s.mu.Lock()
 	s.group = s.client.cfg.ShareGroup

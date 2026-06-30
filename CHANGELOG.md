@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.10] - 2026-06-30
+
+### Added
+
+- **ShareConsumer: clear error on brokers without KIP-932.** `Poll` now guards the share-group hot path the same way Admin guards its operations: when the broker advertised its APIs without `ShareGroupHeartbeat` (e.g. Redpanda) or advertises it only at v0 (`share.version` disabled), it returns `broker does not support KIP-932 share groups (ShareGroupHeartbeat); requires Apache Kafka 4.1+ with share.version >= 1` instead of letting an opaque `UNSUPPORTED_VERSION` heartbeat error or a connection reset surface deep inside `Poll`. The guard falls through (lets the request try) when versions haven't been negotiated yet. The share-group API keys (76–79) now also have human-readable names in protocol error messages.
+
 ## [0.26.9] - 2026-06-30
 
 ### Added
