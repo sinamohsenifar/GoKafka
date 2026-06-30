@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.1] - 2026-06-30
+
+### Added
+
+- **Client-side field-level encryption (CSFLE), pure Go.** `schema.FieldEncrypter` encrypts/decrypts selected fields of a record map in place with envelope encryption: a fresh AES-256-GCM data key per call, wrapped by a `schema.KMS`. Ships a built-in `schema.LocalKMS` (AES-GCM under a master key); the `KMS` interface lets callers plug AWS/GCP/Azure/Vault drivers **themselves**, so GoKafka stays dependency-free. Encrypt before serializing, decrypt after — only `confluent-kafka-go` offers CSFLE among the Go clients, and that requires cloud SDKs. All stdlib crypto (`crypto/aes`, `crypto/cipher`, `crypto/rand`); GCM authentication means tampering or a wrong key fails loudly.
+
 ## [0.26.0] - 2026-06-30
 
 ### Added
