@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.8] - 2026-06-30
+
+### Fixed
+
+- **ShareAcknowledge (KIP-932): surface per-partition acknowledgement errors.** `DecodeShareAcknowledgeResponse` previously read only the throttle time + top-level error code and returned, ignoring `Responses[].Partitions[].ErrorCode` — which is where share-group ack failures actually appear (e.g. `INVALID_RECORD_STATE` when an acquisition lock has expired). A failed Accept/Reject was therefore reported as **success**, so a record believed acknowledged could be redelivered, or a poison-message Reject silently dropped. The decoder now walks the full topic→partition structure (wire layout verified against a captured real-broker response) and returns the first non-zero code. Found by a multi-agent audit of the KIP-932 share-group implementation.
+
 ## [0.26.7] - 2026-06-30
 
 ### Added
