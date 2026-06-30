@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.17] - 2026-06-30
+
+### Added
+
+- **`kfake.NewBrokerAt(addr)`** — start the in-process mock broker bound to a specific `host:port` (instead of a random loopback port), so tests can bring up a replacement broker at the same bootstrap address. Useful for failover / rebootstrap testing.
+
+### Verified
+
+- **Client rebootstrap resilience (KIP-1102 scenario), now regression-tested.** GoKafka always refreshes metadata via the configured bootstrap servers (re-dialing and re-resolving DNS on failure), so unlike the pre-KIP-1102 Java client it never "forgets" the bootstrap servers after discovery. New `TestRebootstrapAfterBrokerReplacement` proves the client recovers when the broker it knows about is replaced by a fresh one at the same bootstrap address (a full cluster rotation behind a stable endpoint) — no permanent failure, no config change required.
+
 ## [0.26.16] - 2026-06-30
 
 ### Added
