@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.22] - 2026-07-01
+
+### Fixed
+
+- **Validate the record-batch CRC on consume — reject corrupt batches instead of silently losing records (data-loss / standards).** `decodeOneRecordBatch` read the batch CRC-32C and discarded it. A corrupt-but-length-consistent batch could then let `parseRecords` silently skip a record while the consumer's offset advanced past it (**silent data loss**), and it violated the Kafka standard (clients validate the batch CRC). The decoder now computes CRC-32C over the batch — the same checksum the producer writes — and rejects a mismatch, so a corrupt batch fails the fetch (and is retried) rather than dropping records. New rejection unit test; valid batches from real brokers and the produce path are unaffected (verified by the consume/compression/share integration suite + decoder fuzzing).
+
 ## [0.26.21] - 2026-07-01
 
 ### Performance

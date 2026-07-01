@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"encoding/binary"
+	"hash/crc32"
 	"strings"
 	"testing"
 )
@@ -15,11 +16,18 @@ func v2RecordBatchHeader(batch []byte, baseOffset int64, attributes int16, lastO
 	binary.BigEndian.PutUint32(batch[23:27], uint32(lastOffsetDelta))
 }
 
+// setBatchCRC writes the CRC-32C the decoder validates (over batch[21:]). Call
+// it after all other batch bytes are set.
+func setBatchCRC(batch []byte) {
+	binary.BigEndian.PutUint32(batch[17:21], crc32.Checksum(batch[21:], castagnoliTable))
+}
+
 // A control batch (isControl bit 0x20) is reported as a control batch carrying
 // the absolute last offset and no records, so the consumer can advance past it.
 func TestDecodeOneRecordBatchControlMarker(t *testing.T) {
 	batch := make([]byte, 80)
 	v2RecordBatchHeader(batch, 41, 0x20, 0)
+	setBatchCRC(batch)
 	info, err := decodeOneRecordBatch("t", 3, batch)
 	if err != nil {
 		t.Fatal(err)
@@ -36,6 +44,7 @@ func TestDecodeRecordBatchFiltersAborted(t *testing.T) {
 	batch := make([]byte, 80)
 	v2RecordBatchHeader(batch, 0, 0x10, 0)                     // isTransactional
 	binary.BigEndian.PutUint64(batch[43:51], uint64(int64(7))) // producerId field
+	setBatchCRC(batch)
 	// Not aborted -> delivered as data (0 records here, but not a control marker).
 	recs, err := decodeRecordBatch("t", 0, append([]byte(nil), batch...), nil)
 	if err != nil {
@@ -73,5 +82,17 @@ func TestDecodeOneRecordBatchShortIsIgnored(t *testing.T) {
 	recs, err := decodeOneRecordBatch("t", 0, make([]byte, 10))
 	if err != nil || recs != nil {
 		t.Fatalf("expected (nil,nil) for short batch, got (%v,%v)", recs, err)
+	}
+}
+
+// A batch whose CRC does not match its contents is rejected — corruption must not
+// be silently skipped (which would lose records while the offset still advances).
+func TestDecodeOneRecordBatchRejectsBadCRC(t *testing.T) {
+	batch := make([]byte, 80)
+	v2RecordBatchHeader(batch, 0, 0, 0)
+	setBatchCRC(batch)
+	batch[30] ^= 0xff // corrupt a byte covered by the CRC (after the CRC field)
+	if _, err := decodeOneRecordBatch("t", 0, batch); err == nil || !strings.Contains(err.Error(), "CRC") {
+		t.Fatalf("expected CRC mismatch error, got %v", err)
 	}
 }
