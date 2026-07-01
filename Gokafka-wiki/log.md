@@ -12,6 +12,9 @@ updated: 2026-06-30
 
 Append-only log of wiki ingests and notable project events. Newest first.
 
+## 2026-07-01
+- **v0.26.18–v0.26.20 shipped — hardening → performance → docs arc.** (1) Fuzzed the wire decoders (12 `go test -fuzz` targets) — found + fixed a real DoS/panic (unbounded/negative `make` from wire counts in `assignment.go`/`group_assign.go`); de-flaked `TestIntegrationAdminACL`. (2) Rewrote the record-batch decoder to a single per-batch backing buffer: **2014→4 allocs, 116µs→57µs, ~2× consume throughput** on the decode path. (3) Added `Admin.ShareGroupLag` + [`docs/SHARE_GROUPS.md`](../docs/SHARE_GROUPS.md) + `examples/sharegroupadmin`. See [[Audit: KIP-932 implementation gaps]].
+
 ## 2026-06-30
 - **v0.26.17 shipped** — verified **client rebootstrap resilience** (KIP-1102 scenario): GoKafka always refreshes metadata via the bootstrap seeds (re-resolving DNS), so it never forgets the bootstrap servers — a non-gap by design, now locked in with `TestRebootstrapAfterBrokerReplacement` + `kfake.NewBrokerAt`. KIP-1191 (share-group DLQ) deferred — targets the unreleased Kafka 4.4 (no broker to verify against).
 - **v0.26.16 shipped** — `Admin.AlterShareGroupOffsets` (API 91) + `Admin.DeleteShareGroupOffsets` (API 92), completing the share-offset admin trio (Describe/Alter/Delete). New flexible-v0 codecs verbatim from the Apache 4.1 schemas; verified end-to-end against a real broker (consume→ack→leave→alter→describe→delete) — Docker was restarted mid-session to enable local verification. See [[Audit: KIP-932 implementation gaps]].
