@@ -83,12 +83,14 @@ func (p *Producer) ProduceSyncResult(ctx context.Context, records ...Record) ([]
 			if IsRetriable(err) {
 				_ = p.client.cluster.Refresh(ctx, topics)
 			}
-			if p.shouldResetProducerID(err) {
-				p.resetProducerID()
-				if err2 := p.ensureProducerID(ctx); err2 != nil {
-					return err2
-				}
-			}
+			// OUT_OF_ORDER_SEQUENCE / INVALID_PRODUCER_EPOCH are deliberately NOT
+			// retriable and are surfaced to the caller (fatal for the idempotent
+			// producer, abortable for the transactional one). They must never
+			// trigger a producer-id reset + full re-send: the broker may have
+			// already committed part of this send, and re-sending under a fresh
+			// producer id would duplicate those records — the exact guarantee the
+			// idempotent producer exists to provide. Recovery is the caller's:
+			// recreate the producer (idempotent) or abort the transaction.
 			span.RecordError(err)
 			span.SetStatus(observe.StatusError, err.Error())
 			p.client.observe.Log(ctx, observe.LevelError, "produce failed", observe.Error(err))
@@ -177,21 +179,6 @@ func coordinatorRetry(base RetryConfig) RetryConfig {
 	return r
 }
 
-func (p *Producer) resetProducerID() {
-	p.pidMu.Lock()
-	defer p.pidMu.Unlock()
-	p.pidReady = false
-	p.idState = nil
-}
-
-func (p *Producer) shouldResetProducerID(err error) bool {
-	var ke *KafkaError
-	if !AsKafkaError(err, &ke) {
-		return false
-	}
-	return ke.Code == ErrCodeInvalidProducerEpoch || ke.Code == ErrCodeOutOfOrderSequence
-}
-
 func (p *Producer) produceSettings(seq func(topic string, part int32) int32, pid *protocol.ProducerID, transactional bool) protocol.ProduceSettings {
 	settings := protocol.ProduceSettings{
 		Acks:             int16(p.client.cfg.Producer.Acks),
@@ -262,10 +249,16 @@ func (p *Producer) sendRecords(ctx context.Context, records []Record, opts recor
 		byBroker[leader] = append(byBroker[leader], pr)
 	}
 
-	// One batch per partition; the partition set is exactly inputByKey's keys.
+	// One batch per partition holding ALL that partition's records. The
+	// idempotent sequence block a batch consumes is its record count, not one:
+	// encodeRecordBatch stamps baseSequence..baseSequence+N-1 for N records, so
+	// the broker expects the next batch at baseSequence+N. Reserving only 1 would
+	// leave idState N-1 sequences behind, and every later batch on that partition
+	// would be rejected OUT_OF_ORDER_SEQUENCE (and, pre-fix, re-sent under a fresh
+	// producer id — silent duplication). Reserve exactly len(records) per key.
 	partBatches := make(map[partKey]int, len(inputByKey))
-	for k := range inputByKey {
-		partBatches[k] = 1
+	for k, recs := range inputByKey {
+		partBatches[k] = len(recs)
 	}
 
 	seqCursor := map[partKey]int32{}
