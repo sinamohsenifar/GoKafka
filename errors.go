@@ -66,10 +66,17 @@ func (e *KafkaError) Retriable() bool {
 	case ErrCodeLeaderNotAvail, ErrCodeNotLeaderForPart, ErrCodeRequestTimedOut,
 		ErrCodeNetworkException, ErrCodeCoordinatorLoad, ErrCodeCoordinatorNotAvailable, ErrCodeNotCoordinator,
 		ErrCodeNotEnoughReplicas, ErrCodeNotEnoughReplicasAfterAppend, ErrCodeRebalanceInProg,
-		ErrCodeInvalidProducerEpoch, ErrCodeOutOfOrderSequence, ErrCodeConcurrentTransactions,
+		ErrCodeConcurrentTransactions,
 		ErrCodeShareSessionNotFound, ErrCodeInvalidShareSessionEpoch:
 		return true
 	default:
+		// OUT_OF_ORDER_SEQUENCE (45) and INVALID_PRODUCER_EPOCH (47) are NOT
+		// retriable: on an idempotent producer they are fatal (the local
+		// sequence has diverged from the broker; a blind resend under a new
+		// producer id would duplicate committed records), and on a transactional
+		// producer they are abortable (the caller must abort, not retry). Both
+		// must surface to the caller — matching the Java, librdkafka, and
+		// franz-go idempotent-producer fatal-error contract.
 		return false
 	}
 }

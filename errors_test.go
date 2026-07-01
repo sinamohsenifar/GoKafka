@@ -10,20 +10,29 @@ import (
 	"time"
 )
 
-// Locks in the retriable broker-error classification (idempotent reset,
-// coordinator/leader transients, transaction concurrency, share sessions).
+// Locks in the retriable broker-error classification (coordinator/leader
+// transients, transaction concurrency, share sessions).
 func TestKafkaErrorRetriable(t *testing.T) {
 	retriable := []ErrorCode{
 		ErrCodeLeaderNotAvail, ErrCodeNotLeaderForPart, ErrCodeRequestTimedOut,
 		ErrCodeNetworkException, ErrCodeCoordinatorLoad, ErrCodeCoordinatorNotAvailable,
 		ErrCodeNotCoordinator, ErrCodeNotEnoughReplicas, ErrCodeNotEnoughReplicasAfterAppend,
-		ErrCodeRebalanceInProg, ErrCodeInvalidProducerEpoch, ErrCodeOutOfOrderSequence,
+		ErrCodeRebalanceInProg,
 		ErrCodeConcurrentTransactions, ErrCodeShareSessionNotFound, ErrCodeInvalidShareSessionEpoch,
 	}
 	for _, c := range retriable {
 		if !(&KafkaError{Code: c}).Retriable() {
 			t.Errorf("code %d should be retriable", c)
 		}
+	}
+	// OUT_OF_ORDER_SEQUENCE and INVALID_PRODUCER_EPOCH must NOT be retriable:
+	// retrying (with a producer-id reset + resend) duplicates committed records
+	// on an idempotent producer. They are surfaced to the caller as fatal.
+	if (&KafkaError{Code: ErrCodeOutOfOrderSequence}).Retriable() {
+		t.Error("OUT_OF_ORDER_SEQUENCE (45) must not be retriable — resend would duplicate")
+	}
+	if (&KafkaError{Code: ErrCodeInvalidProducerEpoch}).Retriable() {
+		t.Error("INVALID_PRODUCER_EPOCH (47) must not be retriable — abortable/fatal")
 	}
 	if (&KafkaError{Code: ErrCodeInvalidTxnState}).Retriable() {
 		t.Error("INVALID_TXN_STATE (48) must not be retriable")

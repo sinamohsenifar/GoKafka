@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.23] - 2026-07-01
+
+### Fixed
+
+- **Idempotent producer: reserve one sequence per record, not one per batch (critical data-integrity).** `sendRecords` hard-coded the per-partition sequence reservation to `1` (`partBatches[k] = 1`), but all of a partition's records go into a single batch that claims wire sequences `base..base+N-1`. The persistent idempotent state therefore fell `N-1` sequences behind after the first multi-record batch, so the **second** batch on that partition was rejected `OUT_OF_ORDER_SEQUENCE` by any real broker — breaking every idempotent/transactional producer that sends two or more records to a partition. It now reserves exactly `len(records)` per partition. New white-box regression test asserts the sequence advances by record count (3, then +2, so 5). Invisible to the old suite because `kfake` did not validate sequences; confirmed by an adversarial data-loss audit.
+- **Idempotent/transactional producer: `OUT_OF_ORDER_SEQUENCE` (45) and `INVALID_PRODUCER_EPOCH` (47) are now fatal, not retriable (critical duplication).** Previously both were classified retriable *and* triggered a producer-id reset plus full re-send inside the retry loop. Because the broker may have already committed part of a multi-broker send, re-sending under a fresh producer id **duplicated the committed records** — the exact guarantee the idempotent producer exists to provide. Both codes are now non-retriable and surfaced to the caller (fatal for the idempotent producer, abortable for the transactional one), matching the Java / librdkafka / franz-go contract. The unused `resetProducerID`/`shouldResetProducerID` reset path is removed.
+
 ## [0.26.22] - 2026-07-01
 
 ### Fixed
