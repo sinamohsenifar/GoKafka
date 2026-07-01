@@ -36,24 +36,32 @@ func TestIntegrationAlterUserScramCredentials(t *testing.T) {
 		_ = admin.DeleteUserScramCredential(context.Background(), user, gokafka.ScramSHA256)
 	})
 
-	// DescribeUserScramCredentials should report the credential we just upserted.
-	descs, err := admin.DescribeUserScramCredentials(ctx, user)
-	if err != nil {
-		t.Fatalf("describe scram credentials: %v", err)
-	}
-	var described bool
-	for _, d := range descs {
-		if d.User != user {
-			continue
+	// SCRAM credential upserts propagate asynchronously through KRaft metadata, so
+	// DescribeUserScramCredentials may briefly still report nothing right after the
+	// upsert — poll until the credential appears.
+	var descs []gokafka.UserScramCredentials
+	described := false
+	for i := 0; i < 20 && !described; i++ {
+		descs, err = admin.DescribeUserScramCredentials(ctx, user)
+		if err != nil {
+			t.Fatalf("describe scram credentials: %v", err)
 		}
-		for _, c := range d.Credentials {
-			if c.Mechanism == gokafka.ScramSHA256 && c.Iterations == 4096 {
-				described = true
+		for _, d := range descs {
+			if d.User != user {
+				continue
 			}
+			for _, c := range d.Credentials {
+				if c.Mechanism == gokafka.ScramSHA256 && c.Iterations == 4096 {
+					described = true
+				}
+			}
+		}
+		if !described {
+			time.Sleep(500 * time.Millisecond)
 		}
 	}
 	if !described {
-		t.Fatalf("upserted SCRAM credential not found in describe: %+v", descs)
+		t.Fatalf("upserted SCRAM credential not found in describe after polling: %+v", descs)
 	}
 
 	// Verify the credential works by authenticating with it on the SASL listener.
