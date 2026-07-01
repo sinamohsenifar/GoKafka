@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.18] - 2026-06-30
+
+### Fixed
+
+- **Bound allocations when decoding consumer-group member assignments and subscriptions (DoS/panic hardening).** The legacy assignment decoder did `make([]int32, nParts)` and `make(..., 0, nTopics)` straight from wire-supplied counts, and the subscription decoder did the same — so a malformed or hostile `SyncGroup`/`JoinGroup` member payload could **panic** (a negative count is a `makeslice` panic) or **exhaust memory** (a huge count). These five spots now clamp the prealloc via `safePrealloc` (≤4096, ≥0) like every other decoder, and grow by append. Found by the new decoder fuzz suite.
+
+### Added
+
+- **Native Go fuzz tests for the wire decoders.** `internal/protocol/fuzz_test.go` adds `go test -fuzz` targets over the record-batch, fetch, metadata, share-group (fetch/describe/acknowledge), share-offset (describe/alter/delete), offset-fetch, describe-configs, member-assignment, and subscription decoders, asserting they never panic, OOM, or hang on arbitrary input. The seed corpus runs as part of the normal test suite (a permanent regression guard); each target was fuzzed and is clean.
+
 ## [0.26.17] - 2026-06-30
 
 ### Added

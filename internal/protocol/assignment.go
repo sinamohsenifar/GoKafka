@@ -35,7 +35,7 @@ func parseLegacyAssignment(buf *wire.Buffer) ([]TopicPartitionAssignment, error)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]TopicPartitionAssignment, 0, nTopics)
+	out := make([]TopicPartitionAssignment, 0, safePrealloc(int(nTopics)))
 	for i := int32(0); i < nTopics; i++ {
 		topic, err := buf.ReadString()
 		if err != nil {
@@ -45,12 +45,13 @@ func parseLegacyAssignment(buf *wire.Buffer) ([]TopicPartitionAssignment, error)
 		if err != nil {
 			return nil, err
 		}
-		parts := make([]int32, nParts)
+		parts := make([]int32, 0, safePrealloc(int(nParts)))
 		for j := int32(0); j < nParts; j++ {
-			parts[j], err = buf.ReadInt32()
+			p, err := buf.ReadInt32()
 			if err != nil {
 				return nil, err
 			}
+			parts = append(parts, p)
 		}
 		out = append(out, TopicPartitionAssignment{Topic: topic, Partitions: parts})
 	}
@@ -62,7 +63,7 @@ func parseCompactAssignment(buf *wire.Buffer) ([]TopicPartitionAssignment, error
 	if err != nil {
 		return nil, err
 	}
-	out := make([]TopicPartitionAssignment, 0, int(nTopics)-1)
+	out := make([]TopicPartitionAssignment, 0, safePrealloc(int(nTopics)-1))
 	for i := 1; i < int(nTopics); i++ {
 		topic, err := buf.ReadCompactString()
 		if err != nil {
@@ -72,7 +73,7 @@ func parseCompactAssignment(buf *wire.Buffer) ([]TopicPartitionAssignment, error
 		if err != nil {
 			return nil, err
 		}
-		parts := make([]int32, 0, int(nParts)-1)
+		parts := make([]int32, 0, safePrealloc(int(nParts)-1))
 		for j := 1; j < int(nParts); j++ {
 			part, err := buf.ReadInt32()
 			if err != nil {
