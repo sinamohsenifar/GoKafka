@@ -3,6 +3,7 @@ package protocol
 import (
 	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 
 	"github.com/sinamohsenifar/gokafka/internal/compress"
 	"github.com/sinamohsenifar/gokafka/internal/wire"
@@ -491,8 +492,16 @@ func decodeOneRecordBatch(topic string, part int32, batch []byte) (*recordBatchI
 		// our 3.4+ target) always send v2, so reject anything else.
 		return nil, fmt.Errorf("protocol: unsupported record batch magic %d (expected 2)", magic)
 	}
-	if _, err := buf.ReadInt32(); err != nil { // crc
+	crc, err := buf.ReadInt32() // crc (CRC-32C over batch[21:], the attributes field onward)
+	if err != nil {
 		return nil, err
+	}
+	// Validate the batch CRC (KIP-101 CRC-32C). A corrupt-but-length-consistent
+	// batch would otherwise let parseRecords silently skip a record while the
+	// consumer's offset advances past it — silent data loss. Reject it instead so
+	// the fetch is retried; the produce path computes this same checksum.
+	if got := crc32.Checksum(batch[21:], castagnoliTable); got != uint32(crc) {
+		return nil, fmt.Errorf("protocol: record batch CRC-32C mismatch (got %08x, want %08x): corrupt batch", got, uint32(crc))
 	}
 	attributes, err := buf.ReadInt16()
 	if err != nil {
